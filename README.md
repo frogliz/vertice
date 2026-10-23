@@ -4,6 +4,8 @@ Finanças pessoais em português: receitas, despesas, recorrências por mês, pl
 
 **Contas online:** cadastro por nome, e-mail e senha, login, recuperação de senha, salvamento automático por usuário e controle de conflitos entre dispositivos. Autenticação e banco: Supabase. Hospedagem: GitHub Pages ou qualquer serviço estático HTTPS.
 
+Se um link de e-mail estiver inválido ou expirado, use **Reenviar confirmação**. Quando a autenticação funciona mas o banco falha, o site mantém a sessão e oferece **Tentar abrir meus dados**, sem pedir outro cadastro. Falhas de cache da API, permissões e links de confirmação têm mensagens diferentes. Não compartilhe links completos de confirmação ou recuperação, pois eles podem conter credenciais temporárias.
+
 ## Publicar
 
 Siga [PUBLICAR-GITHUB.md](PUBLICAR-GITHUB.md). A automação `.github/workflows/pages.yml` testa e publica o site ao enviar alterações para `main`.

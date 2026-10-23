@@ -80,3 +80,6 @@ revoke all on function public.vertice_save_state(jsonb, integer, uuid) from publ
 grant execute on function public.vertice_save_state(jsonb, integer, uuid) to authenticated;
 comment on table public.vertice_states is 'Dados financeiros Vértice isolados por proprietário, com controle de revisão.';
 commit;
+
+-- Atualize a API depois da criação da tabela e da função.
+notify pgrst, 'reload schema';

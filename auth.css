@@ -2,3 +2,5 @@ body[data-auth=pending]>.app,body[data-auth=gate]>.app{display:none}body[data-au
 @media(max-width:1150px){.account-button{max-width:95px;font-size:9px;padding:10px}.auth-screen{gap:15px;padding:20px}.auth-story{padding:40px}.auth-content{padding:25px}.auth-brand{margin-bottom:55px}.auth-story-bottom{margin-top:55px}}
 @media(max-width:800px){.auth-screen{grid-template-columns:1fr;padding:20px;gap:0}.auth-story{display:none}.auth-content{padding:30px 15px;min-height:calc(100svh - 40px)}.auth-card:before{content:'⌁ vértice';display:block;font-size:29px;font-weight:550;letter-spacing:-1.6px;margin-bottom:45px}.account-banner{margin-left:22px;margin-right:22px}.account-button{max-width:85px}}
 @media(max-width:700px){.account-button{order:3;max-width:90px}.appearance-button{order:2}.account-banner{margin:15px 18px 0}.account-banner .toolbar{width:100%}.account-banner .toolbar button{flex:1}.auth-card h1{font-size:25px}.account-info{gap:13px}.account-info h2{font-size:15px}.auth-screen{padding:10px}.auth-content{padding:25px 17px;min-height:calc(100svh - 20px)}}
+
+.auth-links{flex-wrap:wrap;row-gap:12px}
