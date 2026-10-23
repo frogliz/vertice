@@ -1,0 +1,9 @@
+node_modules/
+preview.png
+*.log
+entrega/
+.env
+.env.*
+!.env.example
+*-backup-*.json
+config.local.js
