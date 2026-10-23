@@ -2,13 +2,13 @@
 
 Você vai usar dois serviços: **GitHub Pages** serve o site; **Supabase** cuida do cadastro, login e dados de cada pessoa. Seus amigos acessam o mesmo endereço, mas cada conta enxerga os próprios registros.
 
-## 1. Liberar o Supabase atual
+## 1. Conferir o Supabase configurado
 
-O projeto escolhido é **frogliz's Project**, referência `ltxbwxqhtazpckdfzlbf`, na região São Paulo. A tabela `vertice_states`, a função de salvamento e as políticas de acesso já foram criadas e verificadas nesse projeto.
+O site aponta para o projeto **`kdngcqztmimqzwckwzje`**, com a URL e a chave publicável informadas pelo proprietário. O serviço de autenticação desse projeto respondeu normalmente, sem o bloqueio de cota do projeto anterior.
 
-Na verificação desta entrega, as APIs HTTP estavam bloqueadas pelo motivo `exceed_storage_size_quota`. Acesse o [painel do projeto](https://supabase.com/dashboard/project/ltxbwxqhtazpckdfzlbf), confira **Usage** e libere a cota ou ajuste o plano se você decidir fazê-lo. Não apague arquivos de outros aplicativos sem verificar para que servem. Enquanto o bloqueio existir, login e sincronização online não funcionarão; o modo local continua disponível.
+No [SQL Editor do projeto novo](https://supabase.com/dashboard/project/kdngcqztmimqzwckwzje/sql/new), execute todo o conteúdo de `database/SETUP.sql`. Esse script cria a tabela `vertice_states`, as políticas por proprietário e a função de salvamento. Confira o projeto selecionado no topo antes de executar. O cadastro pode funcionar sem essa tabela, mas o painel não conseguirá carregar nem salvar os registros até o banco estar pronto.
 
-Não é necessário executar novamente o SQL no projeto atual. Para outro projeto, execute o conteúdo de `database/SETUP.sql` no SQL Editor e depois ajuste `config.js`.
+Para confirmar a criação, execute `select to_regclass('public.vertice_states') as tabela;`. O resultado deve ser `vertice_states` ou `public.vertice_states`, não `NULL`. Se a tabela existir e a API ainda não encontrá-la, execute `notify pgrst, 'reload schema';` e aguarde a atualização do cache.
 
 ## 2. Usar a pasta preparada para o GitHub
 
