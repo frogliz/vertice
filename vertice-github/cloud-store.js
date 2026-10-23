@@ -1,0 +1,20 @@
+(function(root){
+'use strict';
+function createCloudStore(options){
+  const clone=v=>JSON.parse(JSON.stringify(v));
+  let data=null,revision=0,dirty=false,conflict=false,busy=false,stopped=false,sequence=0,timer=null;
+  const status=(kind,message)=>{if(!stopped)options.onStatus?.({kind,message,dirty,revision})};
+  const draft=()=>({owner:options.userId,data:clone(data),baseRevision:revision,dirty,savedAt:new Date().toISOString()});
+  function persist(){try{options.saveDraft(draft());return true}catch(e){status('warning','Não foi possível manter a cópia offline. Exporte um backup.');return false}}
+  function apply(value){if(!options.valid(value))throw Error('VERTICE_INVALID_REMOTE');data=clone(value);sequence++;options.onState?.(clone(data))}
+  async function load(){let cached=null;try{cached=options.readDraft()}catch(e){}if(cached&&(cached.owner!==options.userId||!options.valid(cached.data)||!Number.isInteger(cached.baseRevision)||cached.baseRevision<0))cached=null;let remote;try{remote=await options.read(options.userId)}catch(error){if(stopped)return;if(!cached)throw error;revision=cached.baseRevision;dirty=!!cached.dirty;apply(cached.data);status('offline',dirty?'Alterações neste dispositivo aguardam conexão.':'Sem conexão. Mostrando a última cópia desta conta.');return}if(stopped)return;revision=remote?.revision||0;if(cached?.dirty){dirty=true;apply(cached.data);conflict=cached.baseRevision!==revision;revision=cached.baseRevision;status(conflict?'conflict':'pending',conflict?'Esta conta foi alterada em outro dispositivo. Escolha qual versão manter.':'Enviando alterações que estavam neste dispositivo.');if(!conflict)schedule()}else{dirty=false;conflict=false;apply(remote?.payload||options.empty());persist();status('saved',remote?'Salvo na sua conta':'Conta pronta para começar') }}
+  function schedule(){clearTimeout(timer);if(!stopped&&!conflict)timer=setTimeout(()=>flush(),options.delay??650)}
+  function update(value){if(stopped||data===null)return false;if(!options.valid(value))throw Error('VERTICE_INVALID_STATE');data=clone(value);sequence++;dirty=true;const ok=persist();status(conflict?'conflict':'pending',conflict?'Há duas versões desta conta. Suas alterações continuam neste dispositivo.':'Salvo neste dispositivo · aguardando sincronização');schedule();return ok}
+  async function flush(){clearTimeout(timer);if(busy||stopped||conflict||!dirty||data===null)return false;busy=true;try{while(dirty&&!stopped&&!conflict){const snapshot=clone(data),sentSequence=sequence,expected=revision;status('syncing','Salvando na sua conta…');const result=await options.write(snapshot,expected,options.userId);if(stopped)return false;if(!Number.isInteger(result?.revision)||result.revision<=expected)throw Error('VERTICE_INVALID_REVISION');revision=result.revision;dirty=sequence!==sentSequence;persist();status(dirty?'pending':'saved',dirty?'Enviando as últimas alterações…':'Salvo na sua conta')}return !dirty}catch(error){if(stopped)return false;conflict=error?.code==='40001'||String(error?.message).includes('VERTICE_CONFLICT');status(conflict?'conflict':'offline',conflict?'Esta conta mudou em outro dispositivo. Resolva antes de continuar o salvamento.':'Sem sincronizar. As alterações continuam neste dispositivo.');return false}finally{busy=false}}
+  async function reload(){if(busy)throw Error('VERTICE_BUSY');const remote=await options.read(options.userId);if(stopped)return;revision=remote?.revision||0;dirty=false;conflict=false;apply(remote?.payload||options.empty());persist();status('saved','Versão online carregada')}
+  async function keepLocal(){if(busy)throw Error('VERTICE_BUSY');const remote=await options.read(options.userId);if(stopped)return false;revision=remote?.revision||0;dirty=true;conflict=false;persist();return flush()}
+  function stop(){stopped=true;clearTimeout(timer)}
+  return {load,update,flush,reload,keepLocal,stop,snapshot:()=>({data:data===null?null:clone(data),revision,dirty,conflict,busy})};
+}
+root.createCloudStore=createCloudStore;
+})(typeof window!=='undefined'?window:globalThis);
