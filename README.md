@@ -1,5 +1,17 @@
 # Vértice
 
+## Vida compartilhada
+
+Em **Vida compartilhada**, cadastre até 20 perfis de pessoas ou carteiras de gastos. Cada perfil tem nome, cor, receitas, despesas atribuídas, valores recebidos e pagos e previsão de sobra. Exemplo: dois perfis pessoais para as rendas do casal e uma carteira “Diversos” para separar outros gastos.
+
+Ao cadastrar uma despesa, escolha um responsável, divisão igual, proporcional à renda prevista dos participantes naquele mês, porcentagens ou valores exatos. Cada parte tem uma confirmação independente; confirmar uma pessoa não confirma as outras nem o mês seguinte. As diferenças de centavos são distribuídas sem alterar o total da conta.
+
+Receitas e contas podem ser mensais ou avulsas, com último mês opcional. Sem receitas cadastradas, a divisão proporcional fica provisoriamente igual e exige cadastrar renda antes de confirmar pagamentos. Alterações de renda que afetam contas proporcionais já confirmadas pedem uma nova conferência. Editar uma série compartilhada altera todos os meses; encerrar mantém a conta até o mês selecionado.
+
+Os lançamentos compartilhados entram uma vez nos totais, nas previsões e no CSV geral. Os perfis e suas regras ficam no backup JSON e usam o salvamento existente da conta. Backups anteriores continuam válidos. Estes perfis pertencem a um mesmo acesso: não são logins separados nem convites para outras contas. Plantões, saldo inicial e investimentos pessoais continuam fora dos cálculos individuais de cada perfil.
+
+Arquivos: `shared-engine.js` (divisões e validação), `shared.js` (interface) e `shared.css` (aparência responsiva). Os testes estão integrados a `tests.cjs`.
+
 Finanças pessoais em português: receitas, despesas, recorrências por mês, plantões, parcelas, orçamento, metas e reserva. Interface responsiva com temas e cores personalizáveis.
 
 **Contas online:** cadastro por nome, e-mail e senha, login, recuperação de senha, salvamento automático por usuário e controle de conflitos entre dispositivos. Autenticação e banco: Supabase. Hospedagem: GitHub Pages ou qualquer serviço estático HTTPS.
