@@ -99,3 +99,8 @@ Referência: [envio com SMTP próprio no Supabase](https://supabase.com/docs/gui
 - **Site abre, mas o banco retorna permissão negada ou tabela inexistente:** confira `config.js` e se `database/SETUP.sql` foi executado no projeto apontado por ele.
 - **Aparecem duas versões da conta:** escolha a versão online ou suas alterações locais. Exporte um backup antes de substituir algo que queira preservar.
 - **Dados do modo local não aparecem na conta:** a importação é explícita para impedir que outra pessoa usando o computador receba seus registros por acidente.
+
+
+## Atualização 2.0 e permissão do proprietário
+
+Consulte README.md antes de aplicar a atualização. Os dados anteriores são preservados e o menu foi consolidado. A proteção adicional no banco está em database/SECURITY-HARDENING.sql; deve ser aplicada no projeto configurado e depende da identificação do UUID correto do dono. Publicar arquivos não aplica SQL automaticamente.

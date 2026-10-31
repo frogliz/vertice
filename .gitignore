@@ -1,5 +1,4 @@
 node_modules/
-dist/
 preview.png
 *.log
 entrega/
@@ -8,3 +7,5 @@ entrega/
 !.env.example
 *-backup-*.json
 config.local.js
+
+dist/
