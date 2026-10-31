@@ -1,4 +1,4 @@
-# Usar o Vértice
+# Usar o Avunara
 
 O **Início** mostra o dinheiro disponível agora, entradas e despesas previstas e o fechamento estimado do mês. Valores previstos dependem do que foi cadastrado; marque os recebimentos e pagamentos quando acontecerem.
 
@@ -10,8 +10,12 @@ Em **Pessoas e carteiras**, no Início, crie perfis para separar rendas e respon
 
 **Relatórios** permite abrir qualquer mês e acompanhar o ano. **Metas** registra o progresso informado. **Reservas** acompanha caixinhas e aportes: eles movimentam o caixa e não contam como uma segunda despesa.
 
-Em **Configurações**, ajuste o limite do mês, personalize a aparência e exporte backups. Restaurar um backup substitui os dados atuais após confirmação. O CSV corresponde ao mês selecionado.
+Em **Ateliê visual**, escolha entre Fluido, Editorial e Precisão. Ajuste o modo claro, escuro ou automático, a cor de destaque, o espaçamento e os movimentos. Você também pode escolher começar com os valores ocultos. As alterações são salvas automaticamente: na conta online, acompanham a sincronização dos seus registros; no modo local, ficam neste navegador.
+
+Em **Configurações**, ajuste o limite do mês e exporte backups. Restaurar um backup substitui os dados atuais após confirmação. O CSV corresponde ao mês selecionado.
 
 O modo local salva somente neste navegador. A conta online mantém cópias por usuário, sujeitas à configuração e disponibilidade do serviço. Confira o status de salvamento antes de sair. Em conflitos entre dispositivos, escolha explicitamente qual versão manter.
 
 Plantões é uma ferramenta exclusiva da conta do proprietário autorizado. Ela não aparece para usuários comuns ou no modo local. Sua ativação exige uma permissão conferida no servidor.
+
+O Avunara é a continuação do Vértice: sua conta e os backups anteriores continuam compatíveis.

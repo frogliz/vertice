@@ -15,7 +15,7 @@
     try{
       const money=v=>Number.isSafeInteger(v)&&v>=0&&v<=99999999900;
       const ids=list=>Array.isArray(list)&&new Set(list.map(e=>e.id)).size===list.length&&list.every(e=>typeof e.id==='string'&&e.id.length>0&&e.id.length<=120&&!blocked.has(e.id));
-      return safeTree(s)&&JSON.stringify(s).length<=5000000&&ids(s.entries)&&s.entries.every(e=>money(e.value)&&e.value>0&&e.name.trim().length>0&&e.category.trim().length>0&&e.category.length<=60)&&ids(s.goals)&&s.goals.length<=500&&s.goals.every(g=>money(g.target)&&money(g.saved))&&['funds','debts','transfers'].every(k=>s[k]===undefined||ids(s[k]))&&CategoryCatalog.valid(s);
+      return safeTree(s)&&JSON.stringify(s).length<=5000000&&ids(s.entries)&&s.entries.every(e=>money(e.value)&&e.value>0&&e.name.trim().length>0&&e.category.trim().length>0&&e.category.length<=60)&&ids(s.goals)&&s.goals.length<=500&&s.goals.every(g=>money(g.target)&&money(g.saved))&&['funds','debts','transfers'].every(k=>s[k]===undefined||ids(s[k]))&&CategoryCatalog.valid(s)&&(s.appearance===undefined||typeof AppearanceModel!=='undefined'&&AppearanceModel.valid(s.appearance));
     }catch(_){return false}
   }
   function owner(user){return !!user?.id&&user.app_metadata?.vertice_owner===true}
