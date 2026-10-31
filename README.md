@@ -1,8 +1,8 @@
-# Vértice 2.0
+# Avunara
 
 Finanças pessoais em português, com um início que reúne os saldos do mês, próximos vencimentos, categorias, pessoas e carteiras. Aplicação estática, responsiva e sem instalação para uso no navegador.
 
-## O que mudou
+## Uma nova identidade
 
 - **Início:** reúne o antigo espaço compartilhado e o resumo financeiro, sem somar o mesmo lançamento duas vezes.
 - **Lançamentos:** receitas, despesas avulsas, contas mensais e compras parceladas no mesmo lugar. Filtros por tipo, situação, categoria, frequência e perfil; busca, paginação e exportação CSV.
@@ -11,7 +11,9 @@ Finanças pessoais em português, com um início que reúne os saldos do mês, p
 - **Metas e reservas:** progresso de objetivos, caixinhas e movimentações de patrimônio. Aportes não viram despesas duplicadas.
 - **Menu:** removidos Conselhos, Contas recorrentes e Dívidas e parcelas. As operações mensais e parceladas continuam em Lançamentos.
 - **Plantões:** interface oculta para contas comuns e modo local. A conta autorizada usa a área do proprietário.
-- **Visual:** novo tema claro, opção escura e cores personalizadas, layout para celular, acesso por teclado e respeito a movimento reduzido. Preferências visuais existentes são preservadas.
+- **Novo painel:** saldo confirmado em destaque, evolução diária com registros reais, distribuição por categoria e próximos vencimentos. A interface se adapta a celular e desktop.
+- **Ateliê visual:** estilos Fluido, Editorial e Precisão, modos claro/escuro/automático, cores prontas ou personalizadas, leitura confortável ou compacta e controle de movimento.
+- **Preferências salvas:** escolhas independentes por conta e para o modo local. As preferências da conta fazem parte da sincronização e do backup; escolhas válidas da versão anterior são migradas. A opção de iniciar com valores ocultos também fica salva.
 
 ## Desenvolvimento e validação
 
@@ -54,4 +56,10 @@ O modo local é exclusivo deste navegador e não sincroniza. Dados locais só s�
 
 ## Dependências
 
-O SDK Supabase 2.118.0 permanece fixado em `vendor/`, com licença e verificação existentes. Não foram adicionados scripts de CDN nem bibliotecas de interface.
+O SDK Supabase 2.118.0 permanece fixado em `vendor/`, com licença e verificação existentes. A fonte Manrope é servida localmente em `assets/fonts/`, com licença OFL. Não foram adicionados scripts de CDN nem bibliotecas de interface.
+
+## Compatibilidade da atualização
+
+Avunara é o novo nome do Vértice. O repositório, o caminho publicado e os identificadores internos `vertice-*` e `vertice_states` são preservados para manter sessões, registros e backups compatíveis. Não é necessário criar outra conta.
+
+As preferências são validadas antes de entrar no CSS ou no backup. A saída de uma conta remove seu contexto de aparência; entrar em outra conta recupera a escolha dessa outra pessoa. O funcionamento com múltiplas contas e conflitos de sincronização é coberto pelos testes. A configuração do banco de produção continua dependendo do acesso ao projeto correto.

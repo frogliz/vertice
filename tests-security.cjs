@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-require('./catalog.js');require('./security.js');require('./shared-engine.js');require('./engine.js');
+require('./appearance-model.js');require('./catalog.js');require('./security.js');require('./shared-engine.js');require('./engine.js');
 const C=CategoryCatalog,S=VerticeSecurity,F=Finance;
 let checks=0;const test=(name,fn)=>{fn();checks++;console.log('OK '+name)};
 const blank=()=>({version:1,entries:[],shifts:[],shiftPaid:[],holidays:[],paid:{},goals:[],budget:0});
@@ -18,4 +18,5 @@ test('Importação rejeita IDs duplicados, valores excessivos e descrição vazi
 test('Importação rejeita metas e movimentações com IDs duplicados',()=>{const g={id:'g',name:'Viagem',target:10000,saved:0};assert.equal(F.valid({...blank(),goals:[g,g]}),false);assert.equal(S.validState({...blank(),transfers:[{id:'t'},{id:'t'}]}),false)});
 test('CSV neutraliza fórmulas precedidas por espaços ou controles',()=>{for(const v of ['=HYPERLINK("x")',' +SUM(A1)','\t@SUM(A1)','\r-1','\n=1'])assert.ok(S.csvCell(v).startsWith('"\''));assert.equal(S.csvCell('Mercado'),'"Mercado"');assert.equal(S.csvCell('Nome "A"'),'"Nome ""A"""')});
 test('Importação aceita texto HTML como texto sem executá-lo',()=>{assert.ok(F.valid({...blank(),entries:[entry({name:'<img src=x onerror=alert(1)>'})]}))});
+test('Backup inclui aparência validada e rejeita estilos ou campos injetados',()=>{assert.ok(F.valid({...blank(),appearance:{...AppearanceModel.defaults,style:'editorial'}}));assert.equal(F.valid({...blank(),appearance:{...AppearanceModel.defaults,style:'url(x)'}}),false);assert.equal(F.valid({...blank(),appearance:{...AppearanceModel.defaults,privateStart:'yes'}}),false);assert.equal(F.valid({...blank(),appearance:{...AppearanceModel.defaults,extra:'x'}}),false)});
 console.log(`${checks} verificações de categorias e segurança passaram.`);
