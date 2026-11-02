@@ -1,37 +1,637 @@
-'use strict';
-const F=Finance,$=s=>document.querySelector(s),KEY='vertice-financas-v1';
-const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-const blank=()=>({version:1,entries:[],shifts:[],shiftPaid:[],holidays:[],paid:{},goals:[],budget:0,debts:[],funds:[],transfers:[],wealth:{monthly:0,essential:0,months:6},monthSettings:{},overrides:{},categories:CategoryCatalog.migrate({entries:[]})});
-let state=blank(),storageFailed=false;try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(!F.valid(parsed))throw Error('Dados inválidos');state=upgradeState(parsed)}}catch(e){storageFailed=true}
-let month=today().slice(0,7),view='shared',query='',filter='all',status='all',holidayMode=false,modal=null;
-const pages={shared:['⌂','Início'],transactions:['⇄','Lançamentos'],categories:['◈','Categorias'],forecast:['⌁','Relatórios'],goals:['◎','Metas'],wealth:['◇','Reservas'],appearance:['◐','Ateliê visual'],shifts:['▦','Plantões'],settings:['⚙','Configurações']};
-const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
-const mlabel=m=>new Date(m+'-01T12:00:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-const shortDate=d=>d.slice(8)+'/'+d.slice(5,7),pct=(v,t)=>t?Math.min(100,Math.round(v/t*100)):0;
-function toast(msg){$('#toast').textContent=msg;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',3500)}
-function save(){if(!F.valid(state)){toast('Há dados inválidos nesta alteração. Revise os campos antes de salvar.');return false}if(typeof Account!=='undefined'){try{return Account.saveState(state)}catch(error){toast('Não foi possível salvar. Exporte um backup e tente novamente.');return false}}try{localStorage.setItem(KEY,JSON.stringify(state));storageFailed=false;$('#save-status').textContent='Salvo neste navegador';return true}catch(e){storageFailed=true;$('#save-status').textContent='Não salvo — exporte um backup';toast('Não foi possível salvar. Exporte um backup nas configurações.');return false}}
-function freshRecords(){const next=blank();if(state.appearance)next.appearance={...state.appearance};return next}
-function commit(msg){const ok=save();render();if(!ok)toast('A alteração está aberta na tela, mas não foi possível salvar uma cópia. Exporte um backup.');else if(msg)toast(msg)}
-const empty=(title,desc,action)=>`<div class="empty"><strong>${title}</strong>${desc}${action?`<br><button data-action="${action}">＋ Adicionar agora</button>`:''}</div>`;
-function render(){if(typeof Appearance!=='undefined')Appearance.sync(state.appearance);if(view==='overview'||!Object.hasOwn(pages,view)||view==='shifts'&&!ownerTools())view='shared';$('#month').value=month;$('#title').textContent=pages[view][1];$('#nav').innerHTML=Object.entries(pages).filter(([k])=>k!=='settings'&&(k!=='shifts'||ownerTools())).map(([k,[icon,title]])=>`<button class="${view===k?'active':''}" data-view="${k}" title="${title}" aria-label="${title}" ${view===k?'aria-current="page"':''}><span class="nav-icon">${navIcon(k)}</span><span class="nav-label">${title}</span></button>`).join('');$('#main').innerHTML=(view==='appearance'?'':monthToolbar())+({shared:avunaraHome,appearance:appearanceView,transactions:ledgerView,categories:categoriesView,shifts,forecast:yearView,goals,settings:()=> (typeof Account!=='undefined'?Account.panel():'')+settingsView(),wealth:wealthView}[view])();document.querySelector('.rail-bottom').setAttribute('aria-current',view==='settings'?'page':'false');animatePage();if(storageFailed)$('#save-status').textContent='Armazenamento indisponível — exporte um backup';}
-function chart(){const points=Array.from({length:6},(_,i)=>{const m=F.shiftMonth(month,i-4);return {m,...F.totals(state,m)}}),max=Math.max(10000,...points.flatMap(t=>[t.income,t.expense]));return `<svg class="chart" viewBox="0 0 350 94" role="img" aria-label="Comparação de entradas e saídas em seis meses">${[12,35,58].map(y=>`<path d="M0 ${y}H350" stroke="var(--line)" stroke-dasharray="2 4"/>`).join('')}${points.map((t,i)=>{const x=i*59+9;return `<rect x="${x}" y="${69-t.income/max*57}" width="12" height="${Math.max(1,t.income/max*57)}" rx="3" fill="var(--green)"/><rect x="${x+16}" y="${69-t.expense/max*57}" width="12" height="${Math.max(1,t.expense/max*57)}" rx="3" fill="var(--chart-secondary)"/><text x="${x+13}" y="88" text-anchor="middle" fill="var(--muted)" font-size="8">${new Date(t.m+'-01T12:00:00').toLocaleDateString('pt-BR',{month:'short'}).replace('.','')}</text>`}).join('')}</svg><div class="legend"><span><i></i>Entradas previstas</span><span><i class="expense"></i>Saídas previstas</span></div>`}
-function transactionRow(e,actions=true){if(e.sharedId)return sharedTransactionRow(e,actions);return `<div class="row"><div class="row-icon">${e.type==='income'?'↙':'↗'}</div><div class="row-main"><div class="row-title">${esc(e.name)}</div><small>${shortDate(e.date)} · ${esc(e.category)}${e.debtId?' · Parcela':e.recurring?' · Recorrente':''}${e.adjusted?' · Ajustado neste mês':''} · ${e.done?(e.type==='income'?'Recebido':'Pago'):'Pendente'}</small></div><span class="row-value ${e.type==='income'?'positive':''}">${e.type==='income'?'+':'−'} ${F.money(e.value)}</span>${actions?`<div class="row-actions"><button class="row-pay" title="${e.done?'Marcar como pendente':'Confirmar pagamento ou recebimento'}" data-action="paid" data-id="${esc(e.id)}">${e.done?'✓ OK':e.type==='income'?'Receber':'Pagar'}</button><button title="Editar lançamento" aria-label="Editar ${esc(e.name)}" data-action="edit" data-id="${esc(e.id)}">✎</button><button title="Remover lançamento" aria-label="Remover ${esc(e.name)}" data-action="delete" data-id="${esc(e.id)}">×</button></div>`:''}</div>`}
-function shifts(){const t=F.totals(state,month),first=new Date(month+'-01T12:00:00').getDay(),paid=state.shifts.filter(d=>F.monthOf(d)===month&&state.shiftPaid.includes(d)).reduce((a,d)=>a+F.rate(d,state.holidays),0);return `<div class="section-head"><div><h2>Monte sua escala</h2><p class="muted" style="margin-bottom:0">Clique nos dias para adicionar ou remover um plantão.</p></div><span class="pill">R$ 50 úteis / R$ 100 especiais</span></div><div class="shift-layout"><article class="card"><div class="calendar">${['DOM','SEG','TER','QUA','QUI','SEX','SÁB'].map(d=>`<div class="weekday">${d}</div>`).join('')}${'<span></span>'.repeat(first)}${Array.from({length:F.daysIn(month)},(_,i)=>{const d=F.dateFor(month,i+1),weekend=[0,6].includes(new Date(d+'T12:00:00').getDay()),selected=state.shifts.includes(d),holiday=state.holidays.includes(d);return `<button class="day ${weekend?'weekend':''} ${selected?'selected':''} ${holiday?'holiday':''} ${d===today()?'today':''}" data-action="day" data-date="${d}" title="${holiday?'Feriado · ':''}${shortDate(d)} · ${F.money(F.rate(d,state.holidays))}" aria-pressed="${holidayMode?holiday:selected}">${i+1}<small>${selected?'✓ ':''}${F.money(F.rate(d,state.holidays)).replace(',00','')}</small></button>`}).join('')}</div><label class="check-line"><input id="holiday-mode" type="checkbox" ${holidayMode?'checked':''}> Marcar/desmarcar feriados (ponto dourado)</label><p class="note">Feriados são definidos por você. Ative a opção acima e clique na data, depois desative para selecionar plantões.</p></article><div class="stack"><article class="card featured"><div class="label">Total da escala</div><div class="amount">${F.money(t.shiftTotal)}</div><div class="tiny">${t.shiftCount} plantões · ${F.money(paid)} recebidos</div></article><article class="card"><div class="section-head"><h2>Plantões selecionados</h2></div>${state.shifts.filter(d=>F.monthOf(d)===month).sort().map(d=>`<div class="row"><div class="row-main"><div class="row-title">${shortDate(d)} <span class="tiny">${state.holidays.includes(d)?'Feriado':new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short'})}</span></div><small>${F.money(F.rate(d,state.holidays))}</small></div><button data-action="shift-paid" data-date="${d}" title="Alternar recebimento">${state.shiftPaid.includes(d)?'✓ Pago':'Receber'}</button></div>`).join('')||'<div class="tiny">Sua escala está livre. Selecione as datas ao lado.</div>'}</article></div></div>`}
-function forecast(){const t=F.totals(state,month),budget=state.budget;let carry=t.balance-F.savingFlow(state,month);const rows=Array.from({length:3},(_,i)=>{const m=F.shiftMonth(month,i+1),v=F.totals(state,m);carry+=v.balance-F.savingFlow(state,m);return `<tr><td>${mlabel(m)}</td><td>${F.money(v.income)}</td><td>${F.money(v.expense)}</td><td class="${carry<0?'negative':'positive'}">${F.money(carry)}</td></tr>`}).join('');return `<div class="notice">Projeção com os lançamentos cadastrados, receitas e contas recorrentes e plantões selecionados em cada mês. O saldo acumulado desconta os aportes líquidos registrados e parte do resultado previsto do mês selecionado; não inclui saldo bancário anterior nem gastos futuros ainda não cadastrados.</div><div class="grid"><article class="card"><div class="section-head"><h2>Orçamento de despesas</h2><button data-view="settings">Ajustar ↗</button></div><div class="amount">${F.money(t.expense)} <span class="tiny">/ ${F.money(budget)}</span></div><div class="progress"><span style="width:${pct(t.expense,budget)}%;${budget&&t.expense>budget?'background:#f39494':''}"></span></div><div class="tiny">${budget?(t.expense>budget?'Limite ultrapassado em '+F.money(t.expense-budget):'Ainda disponíveis no orçamento: '+F.money(budget-t.expense)):'Defina seu limite mensal nas configurações.'}</div></article><article class="card"><div class="label">Comprometimento da renda prevista</div><div class="amount ${t.expense>t.income?'negative':'positive'}">${t.income?Math.round(t.expense/t.income*100)+'%':t.expense?'Sem renda':'0%'}</div><div class="tiny">${t.balance<0?'Faltam '+F.money(-t.balance)+' para cobrir as despesas.':'Sobra prevista: '+F.money(t.balance)}</div></article></div><article class="card"><div class="section-head"><h2>Olhe para os próximos três meses</h2><span class="tiny">VALORES PREVISTOS</span></div><table class="forecast-table"><thead><tr><th>MÊS</th><th>ENTRADAS</th><th>DESPESAS</th><th style="text-align:right">ACUMULADO</th></tr></thead><tbody>${rows}</tbody></table><p class="note">Para uma previsão mais completa, adicione os gastos esperados e monte a escala dos próximos meses pelo seletor no topo.</p></article>`}
-function goals(){return `<div class="section-head"><div><h2>Dê um destino para suas economias.</h2><p class="muted">Uma reserva, uma viagem ou o seu próximo passo.</p></div><button class="primary" data-action="goal-new">＋ Nova meta</button></div>${state.goals.map(g=>`<article class="card goal-card"><div class="row"><div class="row-icon">◎</div><div class="row-main"><div class="row-title">${esc(g.name)}</div><small>${F.money(g.saved)} guardados de ${F.money(g.target)}</small></div><span class="pill">${pct(g.saved,g.target)}%</span><button data-action="goal-edit" data-id="${esc(g.id)}">Atualizar</button><button data-action="goal-delete" data-id="${esc(g.id)}" aria-label="Excluir meta">×</button></div><div class="progress"><span style="width:${pct(g.saved,g.target)}%"></span></div><div class="tiny">${g.saved>=g.target?'Você chegou lá. Meta conquistada!':'Faltam '+F.money(g.target-g.saved)+' para chegar lá.'}</div></article>`).join('')||`<article class="card">${empty('Toda conquista começa com um plano','Crie sua primeira meta e acompanhe o valor guardado.','goal-new')}</article>`}<p class="note">O progresso da meta é informado manualmente. Para movimentar dinheiro, registre um aporte em Reservas.</p>`}
-function field(label,name,type,value,full=false,extra=''){return `<label class="${full?'full':''}">${label}<input name="${name}" type="${type}" value="${esc(value??'')}" ${extra}></label>`}
-function openEntry(type='expense',recurring=false,id){const e=id?state.entries.find(e=>e.id===id):null;modal={kind:'entry',id};$('#modal-title').textContent=e?'Editar lançamento':'Novo lançamento';$('#fields').innerHTML=`<label>Tipo<select name="type"><option value="expense" ${(e?.type||type)==='expense'?'selected':''}>Despesa</option><option value="income" ${(e?.type||type)==='income'?'selected':''}>Entrada / receita</option></select></label>${field('Valor (R$)','value','number',e?e.value/100:'',false,'min="0.01" step="0.01" max="999999999" required')}${field('Descrição','name','text',e?.name||'',true,'maxlength="120" required placeholder="Ex.: Salário, aluguel, mercado"')}${field('Data / primeiro vencimento','date','date',e?.date||(month===today().slice(0,7)?today():month+'-01'),false,'required')}${categoryField(e?.category||((e?.type||type)==='income'?'Receitas':'Outros'),e?.type||type,false,!!e)}<label class="full check"><input name="recurring" type="checkbox" ${(e?.recurring??recurring)?'checked':''}> Repetir mensalmente</label>${field('Último mês da recorrência (opcional)','end','month',e?.end||'',true)}<label class="full check"><input name="done" type="checkbox" ${e&&state.paid[e.id+'@'+month]?'checked':''}> Já pago / recebido no mês selecionado</label><div class="tiny" style="grid-column:1/-1">Você pode ajustar uma conta recorrente apenas no mês desejado pelo botão Editar. A confirmação vale apenas para ${esc(mlabel(month))}.</div>`;showDialog()}
-function openGoal(id){const g=state.goals.find(g=>g.id===id);modal={kind:'goal',id};$('#modal-title').textContent=g?'Atualizar meta':'Nova meta';$('#fields').innerHTML=field('Nome da conquista','name','text',g?.name||'',true,'required maxlength="120"')+field('Valor desejado (R$)','target','number',g?g.target/100:'',false,'required min="0.01" max="999999999" step="0.01"')+field('Já guardado (R$)','saved','number',g?g.saved/100:0,false,'required min="0" max="999999999" step="0.01"');showDialog()}
-function showDialog(){$('#form .submit').style.display='';$('#form .submit').textContent=modal.kind==='entry'?'Salvar lançamento ↗':modal.kind==='goal'?'Salvar meta ↗':'Salvar ↗';$('#form-error').textContent='';$('#dialog').showModal()}
-$('#form').addEventListener('submit',e=>{e.preventDefault();if(submitCategory(e))return;if(typeof submitShared==='function'&&submitShared(e))return;if(submitMonthly(e))return;if(submitGrowth(e))return;const data=new FormData(e.target);if(modal.kind==='entry'){const value=F.cents(data.get('value')),date=data.get('date'),end=data.get('end'),recurring=data.has('recurring');if(!Number.isSafeInteger(value)||value<=0||!data.get('name').trim()||!data.get('category').trim()||!/^\d{4}-\d{2}-\d{2}$/.test(date)){ $('#form-error').textContent='Preencha os dados com um valor válido.';return}if(recurring&&end&&end<date.slice(0,7)){$('#form-error').textContent='O mês final precisa ser igual ou posterior ao início.';return}const entry={id:modal.id||uid(),name:data.get('name').trim(),type:data.get('type'),value,date,category:data.get('category').trim(),recurring,end:recurring?end:''};const candidate={...state,entries:modal.id?state.entries.map(x=>x.id===modal.id?{...x,...entry}:x):[...state.entries,entry]};if(!F.valid(candidate)){$('#form-error').textContent='Confira valor, data, categoria e limite de registros.';return}state.entries=candidate.entries;const occurs=F.entries(state,month).some(x=>x.id===entry.id);if(occurs)state.paid[entry.id+'@'+month]=data.has('done');if(!occurs)month=date.slice(0,7)}else{const goal={id:modal.id||uid(),name:data.get('name').trim(),target:F.cents(data.get('target')),saved:F.cents(data.get('saved'))};if(!goal.name||!Number.isSafeInteger(goal.target)||goal.target<=0||!Number.isSafeInteger(goal.saved)||goal.saved<0){$('#form-error').textContent='Informe um nome e valores válidos.';return}const candidate={...state,goals:modal.id?state.goals.map(g=>g.id===modal.id?goal:g):[...state.goals,goal]};if(!F.valid(candidate)){$('#form-error').textContent='Confira os valores e o limite de metas.';return}state.goals=candidate.goals}$('#dialog').close();commit('Salvo com sucesso.');});
-function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-function csv(){const safe=VerticeSecurity.csvCell,rows=[['Data','Descrição','Tipo','Categoria','Valor (R$)','Status'],...F.entries(state,month).map(e=>[e.date,e.name,e.type==='income'?'Entrada':'Despesa',e.category,((e.type==='expense'?-1:1)*e.value/100).toFixed(2).replace('.',','),e.done?'Confirmado':'Pendente']),...state.shifts.filter(d=>F.monthOf(d)===month).sort().map(d=>[d,'Plantão','Entrada','Plantões',(F.rate(d,state.holidays)/100).toFixed(2).replace('.',','),state.shiftPaid.includes(d)?'Recebido':'Pendente'])];download(`avunara-${month}.csv`,'\ufeff'+rows.map(r=>r.map(safe).join(';')).join('\r\n'),'text/csv;charset=utf-8')}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-view],[data-action]');if(!b)return;if(b.dataset.view){if(!Object.hasOwn(pages,b.dataset.view)||b.dataset.view==='shifts'&&!ownerTools())return;view=b.dataset.view;render();if(typeof window.scrollTo==='function')window.scrollTo({top:0,behavior:'instant'});return}const a=b.dataset.action,id=b.dataset.id,d=b.dataset.date;if(['day','shift-paid'].includes(a)&&!ownerTools())return;if(handleExperienceAction(a,b))return;if(typeof handleSharedAction==='function'&&handleSharedAction(a,b))return;if(handleMonthAction(a,b))return;if(handleGrowthAction(a,b))return;if(a==='expense')openEntry();else if(a==='fixed-expense')openEntry('expense',true);else if(a==='fixed-income')openEntry('income',true);else if(a==='edit')openEntry('expense',false,id);else if(a==='paid'){state.paid[id+'@'+month]=!state.paid[id+'@'+month];commit()}else if(a==='delete'){const entry=state.entries.find(e=>e.id===id);if(!entry)return;if(confirm(entry.recurring?'Excluir toda a recorrência, incluindo os outros meses?':'Excluir este lançamento?')){state.entries=state.entries.filter(e=>e.id!==id);Object.keys(state.paid).filter(k=>k.startsWith(id+'@')).forEach(k=>delete state.paid[k]);commit('Lançamento excluído.')}}else if(a==='day'){const key=holidayMode?'holidays':'shifts';if(state[key].includes(d)){state[key]=state[key].filter(x=>x!==d);if(key==='shifts')state.shiftPaid=state.shiftPaid.filter(x=>x!==d)}else state[key].push(d);commit()}else if(a==='shift-paid'){state.shiftPaid=state.shiftPaid.includes(d)?state.shiftPaid.filter(x=>x!==d):[...state.shiftPaid,d];commit()}else if(a==='goal-new')openGoal();else if(a==='goal-edit')openGoal(id);else if(a==='goal-delete'){if(confirm('Excluir esta meta?')){state.goals=state.goals.filter(g=>g.id!==id);commit()}}else if(a==='budget'){const v=F.cents($('#budget').value);if(!Number.isSafeInteger(v)||v<0||v>99999999900){toast('Informe um limite válido.');return}state.budget=v;commit('Limite mensal atualizado.')}else if(a==='backup')download('avunara-backup-'+today()+'.json',JSON.stringify(state,null,2),'application/json');else if(a==='import')$('#import').click();else if(a==='csv')csv();else if(a==='reset'){if(confirm('Apagar TODOS os seus registros? Esta ação não pode ser desfeita sem um backup.')){state=freshRecords();commit('Dados apagados.')}}else if(a==='demo'){if((state.shared?.profiles.length||state.shared?.items.length||state.entries.length||state.shifts.length||state.goals.length||state.holidays.length||state.budget||state.debts.length||state.funds.length||state.transfers.length||state.wealth.monthly||state.wealth.essential)&&!confirm('A demonstração substituirá seus dados. Exporte um backup antes. Continuar?'))return;state=freshRecords();const add=(name,type,value,day,category,done,recurring=true)=>{const id=uid();state.entries.push({id,name,type,value,date:F.dateFor(month,day),category,recurring,end:''});state.paid[id+'@'+month]=done};add('Salário mensal','income',350000,5,'Receitas',true);add('Aluguel','expense',110000,10,'Moradia',true);add('Internet + celular','expense',14990,12,'Assinaturas',true);add('Supermercado','expense',42850,18,'Alimentação',true,false);add('Academia','expense',9990,20,'Saúde',false);add('Energia elétrica','expense',18500,25,'Moradia',false);state.shifts=(ownerTools()?[6,8,15,20,27]:[]).filter(d=>d<=F.daysIn(month)).map(d=>F.dateFor(month,d));state.shiftPaid=state.shifts.length?[state.shifts[0]]:[];state.budget=250000;state.goals=[{id:uid(),name:'Minha reserva de tranquilidade',target:1000000,saved:280000}];view='shared';commit('Demonstração carregada. Os valores são exemplos.')}});
-document.addEventListener('change',e=>{if(e.target.id==='type-filter'){filter=e.target.value;ledgerPage=0;render()}else if(e.target.id==='status-filter'){status=e.target.value;ledgerPage=0;render()}else if(e.target.id==='holiday-mode'&&ownerTools()){holidayMode=e.target.checked;render()}});
-document.addEventListener('input',e=>{if(e.target.id==='search'){const pos=e.target.selectionStart;query=e.target.value;ledgerPage=0;render();$('#search').focus();$('#search').setSelectionRange(pos,pos)}});
-$('#month').addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){setMonth(e.target.value)}});$('#prev').onclick=()=>{setMonth(F.shiftMonth(month,-1))};$('#next').onclick=()=>{setMonth(F.shiftMonth(month,1))};$('#new').onclick=()=>openEntry();$('#close').onclick=()=>$('#dialog').close();
-$('#import').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>5000000)throw Error('Arquivo muito grande.');const parsed=JSON.parse(await file.text());if(!F.valid(parsed))throw Error('O arquivo não é um backup válido do Avunara.');if(confirm('Restaurar este backup e substituir todos os dados atuais?')){state=upgradeState(parsed);commit('Backup restaurado.')}}catch(err){toast(err.message||'Não foi possível ler o backup.')}finally{e.target.value=''}});
+"use strict";
+const KEY = "vertice-financas-v1";
+const blank = () => ({
+  version: 1,
+  entries: [],
+  shifts: [],
+  shiftPaid: [],
+  holidays: [],
+  paid: {},
+  goals: [],
+  budget: 0,
+  debts: [],
+  funds: [],
+  transfers: [],
+  wealth: { monthly: 0, essential: 0, months: 6 },
+  monthSettings: {},
+  overrides: {},
+  categories: CategoryCatalog.migrate({ entries: [] }),
+});
+let state = blank(),
+  storageFailed = false;
+try {
+  const raw = localStorage.getItem(KEY);
+  if (raw) {
+    const parsed = JSON.parse(raw);
+    if (!F.valid(parsed)) throw Error("Dados inválidos");
+    state = upgradeState(parsed);
+  }
+} catch (e) {
+  storageFailed = true;
+}
+let month = today().slice(0, 7),
+  view = "shared",
+  query = "",
+  filter = "all",
+  status = "all",
+  holidayMode = false,
+  modal = null;
+// Ordem do menu. "group" separa os blocos da barra lateral.
+const pages = {
+  shared: { title: "Início", group: 1 },
+  transactions: { title: "Lançamentos", group: 1 },
+  forecast: { title: "Relatórios", group: 1 },
+  categories: { title: "Categorias", group: 1 },
+  goals: { title: "Metas", group: 2 },
+  wealth: { title: "Reservas", group: 2 },
+  shifts: { title: "Plantões", group: 2, owner: true },
+  appearance: { title: "Ateliê visual", group: 3 },
+  settings: { title: "Configurações", group: 3 },
+  help: { title: "Ajuda", group: 3 },
+};
+const mobileTabs = ["shared", "transactions", "new", "forecast", "more"];
+function toast(msg) {
+  const node = $("#toast");
+  node.textContent = msg;
+  node.classList.add("show");
+  node.style.display = "block";
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => {
+    node.classList.remove("show");
+    node.style.display = "none";
+  }, 3800);
+}
+function save() {
+  if (!F.valid(state)) {
+    toast("Há dados inválidos nesta alteração. Revise os campos antes de salvar.");
+    return false;
+  }
+  if (typeof Account !== "undefined") {
+    try {
+      return Account.saveState(state);
+    } catch (error) {
+      toast("Não foi possível salvar. Exporte um backup e tente novamente.");
+      return false;
+    }
+  }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    storageFailed = false;
+    $("#save-status").textContent = "Salvo neste navegador";
+    return true;
+  } catch (e) {
+    storageFailed = true;
+    $("#save-status").textContent = "Não salvo. Exporte um backup";
+    toast("Não foi possível salvar. Exporte um backup nas configurações.");
+    return false;
+  }
+}
+function freshRecords() {
+  const next = blank();
+  if (state.appearance) next.appearance = { ...state.appearance };
+  return next;
+}
+function commit(msg) {
+  const ok = save();
+  render();
+  if (!ok) toast("A alteração está na tela, mas não foi salva. Exporte um backup.");
+  else if (msg) toast(msg);
+}
+function greeting() {
+  const h = new Date().getHours(),
+    name =
+      typeof Account !== "undefined" && Account.displayName ? String(Account.displayName).trim().split(" ")[0] : "";
+  const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  return name ? `${hello}, ${name}` : hello;
+}
+function periodText() {
+  const now = today().slice(0, 7);
+  return month === now ? "Mês atual" : month < now ? "Histórico" : "Planejamento";
+}
+function navButton(k, p) {
+  return `<button class="${view === k ? "active" : ""}" data-view="${k}" ${view === k ? 'aria-current="page"' : ""}><span class="nav-icon">${navIcon(k)}</span><span class="nav-label">${p.title}</span></button>`;
+}
+function renderNav() {
+  const visible = Object.entries(pages).filter(([k, p]) => !p.owner || ownerTools());
+  let html = "",
+    group = 0;
+  for (const [k, p] of visible) {
+    if (p.group !== group) {
+      if (group) html += '<hr class="nav-sep">';
+      group = p.group;
+    }
+    html += navButton(k, p);
+  }
+  $("#nav").innerHTML = html;
+  const tabbar = $("#tabbar");
+  if (tabbar)
+    tabbar.innerHTML = mobileTabs
+      .map((k) =>
+        k === "new"
+          ? `<button class="tab-new" data-action="expense" aria-label="Novo lançamento">${icon("plus")}</button>`
+          : k === "more"
+            ? `<button class="${["shared", "transactions", "forecast"].includes(view) ? "" : "active"}" data-action="more-open" aria-haspopup="dialog">${icon("menu")}<span>Mais</span></button>`
+            : `<button class="${view === k ? "active" : ""}" data-view="${k}" ${view === k ? 'aria-current="page"' : ""}>${navIcon(k)}<span>${k === "shared" ? "Início" : k === "transactions" ? "Lançamentos" : "Relatórios"}</span></button>`,
+      )
+      .join("");
+  const more = $("#more-list");
+  if (more)
+    more.innerHTML = visible
+      .filter(([k]) => !["shared", "transactions", "forecast"].includes(k))
+      .map(([k, p]) => navButton(k, p))
+      .join("");
+}
+function render() {
+  F.options.shifts = ownerTools();
+  if (typeof Appearance !== "undefined") Appearance.sync(state.appearance);
+  if (view === "overview" || !Object.hasOwn(pages, view) || (pages[view].owner && !ownerTools())) view = "shared";
+  $("#month").value = month;
+  $("#month-label").textContent = mlabel(month);
+  $("#title").textContent = view === "shared" ? greeting() : pages[view].title;
+  $("#subtitle").textContent = ["appearance", "help"].includes(view) ? "" : periodText();
+  document.body.dataset.view = view;
+  renderNav();
+  $("#main").innerHTML = {
+    shared: homeView,
+    appearance: appearanceView,
+    transactions: ledgerView,
+    categories: categoriesView,
+    shifts,
+    forecast: yearView,
+    goals,
+    settings: () => (typeof Account !== "undefined" ? Account.panel() : "") + settingsView(),
+    wealth: wealthView,
+    help: helpView,
+  }[view]();
+  syncPrivacyButton();
+  animatePage();
+  if (storageFailed) $("#save-status").textContent = "Armazenamento indisponível. Exporte um backup";
+}
+function animatePage() {
+  const key = view + "-" + month;
+  if (animatePage.key === key) return;
+  animatePage.key = key;
+  const main = $("#main");
+  main.classList.remove("page-enter");
+  void main.offsetWidth;
+  main.classList.add("page-enter");
+}
+function syncPrivacyButton() {
+  const b = $("#privacy-toggle");
+  if (!b) return;
+  b.innerHTML = icon(hideAmounts ? "eyeOff" : "eye");
+  b.setAttribute("aria-pressed", String(hideAmounts));
+  b.setAttribute("aria-label", hideAmounts ? "Mostrar valores" : "Ocultar valores");
+  b.title = hideAmounts ? "Mostrar valores" : "Ocultar valores";
+}
+function categoryChip(name) {
+  return `<span class="cat"><i style="background:${esc(categoryColor(name))}"></i>${esc(name)}</span>`;
+}
+function payButton(e, action) {
+  const label = e.done ? (e.type === "income" ? "Recebido" : "Pago") : e.type === "income" ? "Receber" : "Pagar";
+  return `<button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="${action}" data-id="${esc(e.id)}" aria-pressed="${e.done}" title="${e.done ? "Marcar como pendente" : "Confirmar neste mês"}">${e.done ? icon("check") : ""}${label}</button>`;
+}
+function transactionRow(e, actions = true) {
+  if (e.sharedId) return sharedTransactionRow(e, actions);
+  const tags = [
+    e.debtId ? `<span class="tag">Parcela ${e.installment}/${e.count}</span>` : "",
+    e.recurring ? '<span class="tag">Mensal</span>' : "",
+    e.adjusted ? '<span class="tag">Ajustado neste mês</span>' : "",
+  ].join("");
+  const name = e.debtId ? e.name.replace(/ · \d+\/\d+$/, "") : e.name,
+    compact = actions === "compact";
+  return `<div class="tx ${e.type} ${e.done ? "done" : ""} ${isLate(e) ? "late" : ""}"><span class="tx-icon" style="--c:${esc(categoryColor(e.category))}">${icon(e.type === "income" ? "income" : "expense")}</span><div class="tx-main"><strong class="tx-title">${esc(name)}</strong><div class="tx-meta">${compact ? (e.debtId ? `<span class="tag">Parcela ${e.installment}/${e.count}</span>` : categoryChip(e.category)) : categoryChip(e.category) + tags}<span class="due">${dueText(e.date, e.done, e.type)}</span></div></div>${amount(e.value, "tx-value " + (e.type === "income" ? "pos" : ""), e.type === "income" ? "+ " : "− ")}${
+    compact
+      ? `<div class="tx-actions">${payButton(e, "paid")}</div>`
+      : actions
+        ? `<div class="tx-actions">${payButton(e, "paid")}${iconBtn("edit", "edit", "Editar " + name, e.id)}${iconBtn("delete", "trash", "Excluir " + name, e.id, "danger")}</div>`
+        : ""
+  }</div>`;
+}
+function txList(list, actions = true, groupByDay = true) {
+  if (!groupByDay) return `<div class="tx-list">${list.map((e) => transactionRow(e, actions)).join("")}</div>`;
+  const groups = new Map();
+  for (const e of list) groups.set(e.date, [...(groups.get(e.date) || []), e]);
+  return `<div class="tx-list">${[...groups]
+    .map(
+      ([date, items]) =>
+        `<div class="tx-day"><span>${dayLabel(date)}${date === today() ? '<b class="today-chip">Hoje</b>' : ""}</span></div>${items.map((e) => transactionRow(e, actions)).join("")}`,
+    )
+    .join("")}</div>`;
+}
+function shifts() {
+  const t = F.totals(state, month),
+    first = new Date(month + "-01T12:00:00").getDay(),
+    paid = state.shifts
+      .filter((d) => F.monthOf(d) === month && state.shiftPaid.includes(d))
+      .reduce((a, d) => a + F.rate(d, state.holidays), 0);
+  const days = Array.from({ length: F.daysIn(month) }, (_, i) => {
+    const d = F.dateFor(month, i + 1),
+      weekend = [0, 6].includes(new Date(d + "T12:00:00").getDay()),
+      selected = state.shifts.includes(d),
+      holiday = state.holidays.includes(d);
+    return `<button type="button" class="day ${weekend ? "weekend" : ""} ${selected ? "selected" : ""} ${holiday ? "holiday" : ""} ${d === today() ? "today" : ""}" data-action="day" data-date="${d}" title="${holiday ? "Feriado, " : ""}${shortDate(d)}: ${F.money(F.rate(d, state.holidays))}" aria-pressed="${holidayMode ? holiday : selected}"><b>${i + 1}</b><small>${F.money(F.rate(d, state.holidays)).replace(",00", "")}</small></button>`;
+  }).join("");
+  const list =
+    state.shifts
+      .filter((d) => F.monthOf(d) === month)
+      .sort()
+      .map(
+        (d) =>
+          `<div class="tx"><span class="tx-icon">${icon("calendar")}</span><div class="tx-main"><strong class="tx-title">${dayLabel(d)}</strong><div class="tx-meta"><span class="tag">${state.holidays.includes(d) ? "Feriado" : "Plantão"}</span></div></div>${amount(F.rate(d, state.holidays), "tx-value pos", "+ ")}<div class="tx-actions"><button type="button" class="pay ${state.shiftPaid.includes(d) ? "is-done" : ""}" data-action="shift-paid" data-date="${d}" aria-pressed="${state.shiftPaid.includes(d)}">${state.shiftPaid.includes(d) ? icon("check") + "Recebido" : "Receber"}</button></div></div>`,
+      )
+      .join("") || '<p class="muted">Nenhum plantão neste mês. Toque nos dias do calendário.</p>';
+  return `${pageHead("Sua escala", "Toque nos dias para marcar ou desmarcar plantões. Dias úteis valem R$ 50; fins de semana e feriados, R$ 100.")}<div class="shift-layout"><article class="panel"><div class="calendar">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => `<div class="weekday">${d}</div>`).join("")}${"<span></span>".repeat(first)}${days}</div><label class="toggle compact"><span><strong>Marcar feriados</strong><small>Com esta opção ligada, o toque marca o dia como feriado.</small></span><input id="holiday-mode" type="checkbox" ${holidayMode ? "checked" : ""}><i aria-hidden="true"></i></label></article><div class="stack"><article class="panel stat-panel"><span class="stat-label">Total da escala</span>${bigAmount(t.shiftTotal)}<p class="muted">${t.shiftCount} plantões, ${esc(F.money(paid))} recebidos</p></article><article class="panel">${panelHead("Plantões do mês")}<div class="tx-list">${list}</div></article></div></div>`;
+}
+function goalRing(p) {
+  const r = 26,
+    c = 2 * Math.PI * r;
+  return `<svg class="ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" class="ring-track"/><circle cx="32" cy="32" r="${r}" class="ring-value" stroke-dasharray="${((c * p) / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><span class="ring-label">${p}%</span>`;
+}
+function goals() {
+  const list = state.goals
+    .map((g) => {
+      const p = pct(g.saved, g.target);
+      return `<article class="panel goal-card"><div class="goal-ring">${goalRing(p)}</div><div class="goal-main"><h3>${esc(g.name)}</h3><p>${amount(g.saved)} guardados de ${amount(g.target)}</p><p class="muted">${g.saved >= g.target ? "Meta alcançada." : "Faltam " + amount(g.target - g.saved) + "."}</p></div><div class="goal-actions">${btn("goal-edit", "Atualizar", { id: g.id, icon: "edit" })}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></article>`;
+    })
+    .join("");
+  return `${pageHead("Para onde suas economias vão", "Crie objetivos e atualize quanto já guardou. Para registrar a entrada e saída de dinheiro guardado, use Reservas.", btn("goal-new", "Nova meta", { cls: "primary", icon: "plus" }))}${list ? `<div class="goal-grid">${list}</div>` : `<article class="panel">${empty("Nenhuma meta ainda", "Uma viagem, a reserva de emergência ou a troca do celular: dê um nome e um valor.", "goal-new", "Criar meta")}</article>`}`;
+}
+function typeSwitch(current) {
+  return `<div class="type-switch full" role="radiogroup" aria-label="Tipo"><label><input type="radio" name="type" value="expense" ${current === "expense" ? "checked" : ""}><span>${icon("expense")}Despesa</span></label><label><input type="radio" name="type" value="income" ${current === "income" ? "checked" : ""}><span>${icon("income")}Receita</span></label></div>`;
+}
+function openEntry(type = "expense", recurring = false, id) {
+  const e = id ? state.entries.find((e) => e.id === id) : null;
+  const current = e?.type || type;
+  modal = { kind: "entry", id };
+  $("#modal-title").textContent = e ? "Editar lançamento" : current === "income" ? "Nova receita" : "Nova despesa";
+  $("#fields").innerHTML =
+    typeSwitch(current) +
+    moneyField("Valor", "value", e ? e.value : "", false, 'required autofocus aria-describedby="form-error"') +
+    field(
+      "Data",
+      "date",
+      "date",
+      e?.date || (month === today().slice(0, 7) ? today() : month + "-01"),
+      false,
+      "required",
+    ) +
+    field("Descrição", "name", "text", e?.name || "", true, 'maxlength="120" required placeholder="Ex.: Salário, aluguel, mercado"') +
+    categoryField(e?.category || (current === "income" ? "Receitas" : "Outros"), current, true, !!e) +
+    checkField("Repetir todo mês", "recurring", e?.recurring ?? recurring, "Contas fixas, como aluguel e salário.") +
+    field("Último mês da repetição (opcional)", "end", "month", e?.end || "", true) +
+    checkField(
+      current === "income" ? "Já recebi neste mês" : "Já paguei neste mês",
+      "done",
+      e && state.paid[e.id + "@" + month],
+      "Vale só para " + esc(mlabel(month)) + ".",
+    );
+  showDialog({ danger: e ? btn("delete", "Excluir", { id: e.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+}
+function openGoal(id) {
+  const g = state.goals.find((g) => g.id === id);
+  modal = { kind: "goal", id };
+  $("#modal-title").textContent = g ? "Atualizar meta" : "Nova meta";
+  $("#fields").innerHTML =
+    field("Nome da meta", "name", "text", g?.name || "", true, 'required maxlength="120" placeholder="Ex.: Viagem de férias"') +
+    moneyField("Quanto quer juntar", "target", g ? g.target : "", false, "required") +
+    moneyField("Quanto já guardou", "saved", g ? g.saved : 0, false, "required");
+  showDialog({ danger: g ? btn("goal-delete", "Excluir", { id: g.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+}
+const submitLabels = {
+  entry: "Salvar lançamento",
+  goal: "Salvar meta",
+  category: "Salvar categoria",
+  "shared-profile": "Salvar perfil",
+  "shared-item": "Salvar lançamento",
+  "shared-remove": "Remover",
+  "monthly-entry": "Salvar ajuste",
+  "month-settings": "Salvar ajustes",
+  "remove-recurring": "Remover",
+  "month-copy": "Copiar lançamentos",
+  debt: "Salvar parcelamento",
+  fund: "Salvar caixinha",
+  "wealth-plan": "Salvar plano",
+  "fund-adjust": "Atualizar saldo",
+};
+function showDialog(opts = {}) {
+  const submit = $("#form .submit");
+  submit.style.display = opts.noSubmit ? "none" : "";
+  submit.textContent =
+    opts.submit ||
+    (modal.kind === "transfer"
+      ? modal.transferKind === "deposit"
+        ? "Guardar"
+        : "Resgatar"
+      : submitLabels[modal.kind] || "Salvar");
+  submit.classList.toggle("danger-fill", !!opts.destructive);
+  $("#cancel").textContent = opts.noSubmit ? "Fechar" : "Cancelar";
+  $("#form-danger").innerHTML = opts.danger || "";
+  $("#form-error").textContent = "";
+  const dialog = $("#dialog");
+  if (!dialog.open) dialog.showModal();
+  // Novo cadastro: o cursor já vai para o primeiro campo. Edição: foco no título, sem abrir o teclado à toa.
+  const first = modal.id ? null : $("#fields").querySelector?.('input:not([type="radio"]):not([type="checkbox"]):not([type="color"]),select');
+  if (first) first.focus?.();
+  else $("#modal-title").focus?.();
+  syncEndField();
+}
+function syncEndField() {
+  const recurring = $("#fields").querySelector?.('input[name="recurring"]'),
+    end = $("#fields").querySelector?.('input[name="end"]')?.closest?.(".field");
+  if (recurring && end) end.hidden = !recurring.checked;
+}
+$("#form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (submitCategory(e)) return;
+  if (typeof submitShared === "function" && submitShared(e)) return;
+  if (submitMonthly(e)) return;
+  if (submitGrowth(e)) return;
+  const data = new FormData(e.target);
+  if (modal.kind === "entry") {
+    const value = F.cents(data.get("value")),
+      date = data.get("date"),
+      end = data.get("end"),
+      recurring = data.has("recurring");
+    if (!Number.isSafeInteger(value) || value <= 0)
+      return ($("#form-error").textContent = "Informe um valor maior que zero. Exemplo: 150,90.");
+    if (!String(data.get("name") || "").trim()) return ($("#form-error").textContent = "Escreva uma descrição.");
+    if (!String(data.get("category") || "").trim() || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      return ($("#form-error").textContent = "Confira a data e a categoria.");
+    if (recurring && end && end < date.slice(0, 7))
+      return ($("#form-error").textContent = "O último mês precisa ser igual ou depois do mês de início.");
+    const entry = {
+      id: modal.id || uid(),
+      name: data.get("name").trim(),
+      type: data.get("type") === "income" ? "income" : "expense",
+      value,
+      date,
+      category: data.get("category").trim(),
+      recurring,
+      end: recurring ? end || "" : "",
+    };
+    const candidate = {
+      ...state,
+      entries: modal.id
+        ? state.entries.map((x) => (x.id === modal.id ? { ...x, ...entry } : x))
+        : [...state.entries, entry],
+    };
+    if (!F.valid(candidate)) return ($("#form-error").textContent = "Confira valor, data, categoria e limite de registros.");
+    state.entries = candidate.entries;
+    const occurs = F.entries(state, month).some((x) => x.id === entry.id);
+    if (occurs) state.paid[entry.id + "@" + month] = data.has("done");
+    $("#dialog").close();
+    if (!occurs) {
+      month = date.slice(0, 7);
+      try {
+        sessionStorage.setItem("vertice-selected-month", month);
+      } catch (_) {}
+      commit("Salvo em " + mlabel(month) + ".");
+    } else commit(modal.id ? "Lançamento atualizado." : "Lançamento adicionado.");
+    return;
+  } else {
+    const goal = {
+      id: modal.id || uid(),
+      name: String(data.get("name") || "").trim(),
+      target: F.cents(data.get("target")),
+      saved: F.cents(data.get("saved")),
+    };
+    if (
+      !goal.name ||
+      !Number.isSafeInteger(goal.target) ||
+      goal.target <= 0 ||
+      !Number.isSafeInteger(goal.saved) ||
+      goal.saved < 0
+    ) {
+      $("#form-error").textContent = "Informe um nome e valores válidos.";
+      return;
+    }
+    const candidate = {
+      ...state,
+      goals: modal.id ? state.goals.map((g) => (g.id === modal.id ? goal : g)) : [...state.goals, goal],
+    };
+    if (!F.valid(candidate)) {
+      $("#form-error").textContent = "Confira os valores e o limite de metas.";
+      return;
+    }
+    state.goals = candidate.goals;
+  }
+  $("#dialog").close();
+  commit("Salvo.");
+});
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type })),
+    a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function csv() {
+  const safe = VerticeSecurity.csvCell,
+    rows = [
+      ["Data", "Descrição", "Tipo", "Categoria", "Valor (R$)", "Situação"],
+      ...F.entries(state, month).map((e) => [
+        e.date,
+        e.name,
+        e.type === "income" ? "Receita" : "Despesa",
+        e.category,
+        (((e.type === "expense" ? -1 : 1) * e.value) / 100).toFixed(2).replace(".", ","),
+        e.done ? "Confirmado" : "Pendente",
+      ]),
+      ...F.shiftList(state)
+        .filter((d) => F.monthOf(d) === month)
+        .sort()
+        .map((d) => [
+          d,
+          "Plantão",
+          "Receita",
+          "Plantões",
+          (F.rate(d, state.holidays) / 100).toFixed(2).replace(".", ","),
+          state.shiftPaid.includes(d) ? "Recebido" : "Pendente",
+        ]),
+    ];
+  download(`vertice-${month}.csv`, "\ufeff" + rows.map((r) => r.map(safe).join(";")).join("\r\n"), "text/csv;charset=utf-8");
+}
+function hasRecords() {
+  return !!(
+    state.shared?.profiles.length ||
+    state.shared?.items.length ||
+    state.entries.length ||
+    state.shifts.length ||
+    state.goals.length ||
+    state.holidays.length ||
+    state.budget ||
+    state.debts.length ||
+    state.funds.length ||
+    state.transfers.length ||
+    state.wealth.monthly ||
+    state.wealth.essential
+  );
+}
+function loadDemo() {
+  state = freshRecords();
+  const add = (name, type, value, day, category, done, recurring = true) => {
+    const id = uid();
+    state.entries.push({ id, name, type, value, date: F.dateFor(month, day), category, recurring, end: "" });
+    state.paid[id + "@" + month] = done;
+  };
+  add("Salário mensal", "income", 350000, 5, "Receitas", true);
+  add("Aluguel", "expense", 110000, 10, "Moradia", true);
+  add("Internet e celular", "expense", 14990, 12, "Assinaturas", true);
+  add("Supermercado", "expense", 42850, 18, "Alimentação", true, false);
+  add("Academia", "expense", 9990, 20, "Saúde", false);
+  add("Energia elétrica", "expense", 18500, 25, "Moradia", false);
+  state.shifts = (ownerTools() ? [6, 8, 15, 20, 27] : [])
+    .filter((d) => d <= F.daysIn(month))
+    .map((d) => F.dateFor(month, d));
+  state.shiftPaid = state.shifts.length ? [state.shifts[0]] : [];
+  state.budget = 250000;
+  state.goals = [{ id: uid(), name: "Reserva de emergência", target: 1000000, saved: 280000 }];
+  view = "shared";
+}
+function closeOverlays() {
+  const more = $("#more-sheet");
+  if (more?.open) more.close();
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-view],[data-action]");
+  if (!b) return;
+  if (b.hasAttribute?.("data-dismiss")) $("#dialog").close();
+  if (b.dataset.view) {
+    if (!Object.hasOwn(pages, b.dataset.view) || (pages[b.dataset.view].owner && !ownerTools())) return;
+    view = b.dataset.view;
+    closeOverlays();
+    render();
+    if (typeof window.scrollTo === "function") window.scrollTo({ top: 0, behavior: "instant" });
+    return;
+  }
+  const a = b.dataset.action,
+    id = b.dataset.id,
+    d = b.dataset.date;
+  if (["day", "shift-paid"].includes(a) && !ownerTools()) return;
+  if (a === "more-open") {
+    renderNav();
+    $("#more-sheet").showModal();
+    return;
+  }
+  if (a === "more-close") return closeOverlays();
+  closeOverlays();
+  if (handleExperienceAction(a, b)) return;
+  if (typeof handleSharedAction === "function" && handleSharedAction(a, b)) return;
+  if (handleMonthAction(a, b)) return;
+  if (handleGrowthAction(a, b)) return;
+  if (a === "expense") openEntry();
+  else if (a === "fixed-expense") openEntry("expense", true);
+  else if (a === "fixed-income") openEntry("income", true);
+  else if (a === "edit") openEntry("expense", false, id);
+  else if (a === "paid") {
+    state.paid[id + "@" + month] = !state.paid[id + "@" + month];
+    commit();
+  } else if (a === "delete") {
+    const entry = state.entries.find((e) => e.id === id);
+    if (!entry) return;
+    if (confirm(`Excluir “${entry.name}”? Esta ação não pode ser desfeita.`)) {
+      state.entries = state.entries.filter((e) => e.id !== id);
+      Object.keys(state.paid)
+        .filter((k) => k.startsWith(id + "@"))
+        .forEach((k) => delete state.paid[k]);
+      commit("Lançamento excluído.");
+    }
+  } else if (a === "day") {
+    const key = holidayMode ? "holidays" : "shifts";
+    if (state[key].includes(d)) {
+      state[key] = state[key].filter((x) => x !== d);
+      if (key === "shifts") state.shiftPaid = state.shiftPaid.filter((x) => x !== d);
+    } else state[key].push(d);
+    commit();
+  } else if (a === "shift-paid") {
+    state.shiftPaid = state.shiftPaid.includes(d) ? state.shiftPaid.filter((x) => x !== d) : [...state.shiftPaid, d];
+    commit();
+  } else if (a === "goal-new") openGoal();
+  else if (a === "goal-edit") openGoal(id);
+  else if (a === "goal-delete") {
+    const g = state.goals.find((g) => g.id === id);
+    if (g && confirm(`Excluir a meta “${g.name}”?`)) {
+      state.goals = state.goals.filter((g) => g.id !== id);
+      commit("Meta excluída.");
+    }
+  } else if (a === "budget") {
+    const v = F.cents($("#budget").value);
+    if (!Number.isSafeInteger(v) || v < 0 || v > 99999999900) {
+      toast("Informe um limite válido.");
+      return;
+    }
+    state.budget = v;
+    commit("Limite mensal atualizado.");
+  } else if (a === "backup") download("vertice-backup-" + today() + ".json", JSON.stringify(state, null, 2), "application/json");
+  else if (a === "import") $("#import").click();
+  else if (a === "csv") csv();
+  else if (a === "reset") {
+    if (confirm("Apagar TODOS os seus registros desta conta? Isso não pode ser desfeito sem um backup.")) {
+      state = freshRecords();
+      commit("Registros apagados.");
+    }
+  } else if (a === "demo") {
+    if (hasRecords() && !confirm("O exemplo substitui todos os seus dados atuais. Exporte um backup antes. Continuar?"))
+      return;
+    loadDemo();
+    commit("Exemplo carregado. Os valores são fictícios.");
+  }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.name === "recurring") syncEndField();
+  if (e.target.id === "type-filter") {
+    filter = e.target.value;
+    ledgerPage = 0;
+    render();
+  } else if (e.target.id === "status-filter") {
+    status = e.target.value;
+    ledgerPage = 0;
+    render();
+  } else if (e.target.id === "holiday-mode" && ownerTools()) {
+    holidayMode = e.target.checked;
+    render();
+  }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.id === "search") {
+    const pos = e.target.selectionStart;
+    query = e.target.value;
+    ledgerPage = 0;
+    render();
+    $("#search").focus();
+    $("#search").setSelectionRange(pos, pos);
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeOverlays();
+});
+$("#month").addEventListener("change", (e) => {
+  if (/^\d{4}-\d{2}$/.test(e.target.value)) setMonth(e.target.value);
+});
+$("#prev").onclick = () => setMonth(F.shiftMonth(month, -1));
+$("#next").onclick = () => setMonth(F.shiftMonth(month, 1));
+$("#new").onclick = () => openEntry();
+$("#close").onclick = () => $("#dialog").close();
+$("#cancel").onclick = () => $("#dialog").close();
+$("#import").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 5000000) throw Error("Arquivo muito grande.");
+    const parsed = JSON.parse(await file.text());
+    if (!F.valid(parsed)) throw Error("Este arquivo não é um backup válido do Vértice.");
+    if (confirm("Restaurar este backup e substituir todos os dados atuais?")) {
+      state = upgradeState(parsed);
+      commit("Backup restaurado.");
+    }
+  } catch (err) {
+    toast(err.message || "Não foi possível ler o backup.");
+  } finally {
+    e.target.value = "";
+  }
+});
 restoreMonthSelection();
 render();
-if(typeof Account!=='undefined')Account.start();
+if (typeof Account !== "undefined") Account.start();

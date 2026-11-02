@@ -1,18 +1,300 @@
-'use strict';
-let selectedDebt=null;
-function upgradeState(s){return {...s,categories:CategoryCatalog.migrate(s),monthSettings:s.monthSettings||{},overrides:s.overrides||{},debts:s.debts||[],funds:s.funds||[],transfers:s.transfers||[],wealth:s.wealth||{monthly:0,essential:0,months:6}}}
-function debtView(){const list=state.debts.map(d=>({d,...F.debtSummary(state,d,today())})),remaining=list.reduce((a,x)=>a+x.remaining,0),monthly=F.entries(state,month).filter(e=>e.debtId).reduce((a,e)=>a+e.value,0),late=list.flatMap(x=>x.overdue),active=state.debts.find(d=>d.id===selectedDebt);return `<div class="section-head"><div><h2>Uma parcela de cada vez.</h2><p class="muted">Saiba o que falta, quando vence e quando termina.</p></div><button class="primary" data-action="debt-new">＋ Nova dívida</button></div><div class="stats"><article class="card featured"><div class="label">Saldo total a quitar</div><div class="amount">${F.money(remaining)}</div><div class="tiny">${list.filter(x=>x.remaining>0).length} dívidas em andamento</div></article><article class="card"><div class="label">Parcelas em ${esc(mlabel(month))}</div><div class="amount">${F.money(monthly)}</div><div class="tiny">Já incluídas nas despesas e previsões</div></article><article class="card"><div class="label">Vencidas e não confirmadas</div><div class="amount ${late.length?'negative':''}">${late.length}</div><div class="tiny">${F.money(late.reduce((a,e)=>a+e.value,0))} para conferir</div></article></div>${active?debtDetails(active):''}${list.map(x=>`<article class="card goal-card"><div class="section-head"><div><h2>${esc(x.d.name)}</h2><div class="tiny" style="margin-top:5px">${esc(x.d.creditor||'Credor não informado')} · contratação ${shortDate(x.d.start)}/${x.d.start.slice(0,4)}</div></div><span class="pill">${x.paidCount}/${x.d.count} pagas</span></div><div class="metric-pair"><span>Total contratado: <b>${F.money(x.d.total)}</b></span><span>Falta: <b class="${x.remaining?'':'positive'}">${F.money(x.remaining)}</b></span></div><div class="progress"><span style="width:${pct(x.paidCount,x.d.count)}%"></span></div><div class="tiny">${x.next?'Próxima em aberto: '+shortDate(x.next.date)+'/'+x.next.date.slice(0,4)+' · '+F.money(x.next.value):'Dívida quitada. Um compromisso a menos!'}<br>Primeiro vencimento: ${shortDate(x.d.firstDue)}/${x.d.firstDue.slice(0,4)} · último: ${shortDate(x.last)}/${x.last.slice(0,4)}${x.d.principal?'<br>Valor original: '+F.money(x.d.principal)+' · diferença para o parcelado: '+F.money(x.cost):''}</div><div class="toolbar" style="margin:12px 0 0"><button data-action="debt-details" data-id="${esc(x.d.id)}">Ver parcelas</button><button data-action="debt-edit" data-id="${esc(x.d.id)}">Editar</button><button data-action="debt-delete" data-id="${esc(x.d.id)}" class="danger">Excluir</button></div></article>`).join('')||`<article class="card">${empty('Coloque suas parcelas no papel, sem culpa.','Informe a primeira data de vencimento e o número de parcelas. O sistema distribui os valores nos meses certos.','debt-new')}</article>`}<p class="note">O saldo a quitar considera toda a dívida. Os cartões mensais seguem o mês selecionado. Atrasos usam a data de hoje; juros por atraso e multas não são acrescentados automaticamente.</p>`}
-function debtDetails(d){const x=F.debtSummary(state,d,today());return `<article class="card goal-card"><div class="section-head"><h2>Parcelas · ${esc(d.name)}</h2><button data-action="debt-close">Fechar ×</button></div><div class="installment-list">${x.schedule.map(e=>`<div class="row"><div class="row-main"><div class="row-title">Parcela ${e.installment} de ${e.count}</div><small>${shortDate(e.date)}/${e.date.slice(0,4)} · ${e.done?'Paga':e.date<today()?'Vencida':'A vencer'}</small></div><span class="row-value ${!e.done&&e.date<today()?'negative':''}">${F.money(e.value)}</span><button data-action="installment-paid" data-id="${esc(e.id)}" data-date="${e.date}">${e.done?'✓ Paga':'Confirmar'}</button></div>`).join('')}</div></article>`}
-function wealthView(){const funds=state.funds,total=funds.reduce((a,f)=>a+F.fundBalance(state,f),0),reserve=funds.filter(f=>f.kind==='reserve').reduce((a,f)=>a+F.fundBalance(state,f),0),invested=total-reserve,target=state.wealth.essential*state.wealth.months,flow=F.savingFlow(state,month),t=F.totals(state,month),suggested=Math.max(0,Math.min(state.wealth.monthly,t.closing,F.availableAfterSaving(state,month))),history=[...state.transfers].sort((a,b)=>b.date.localeCompare(a.date));return `<div class="section-head"><div><h2>Cuide do seu amanhã.</h2><p class="muted">Separe a reserva do dinheiro para outros objetivos.</p></div><button class="primary" data-action="fund-new">＋ Nova caixinha</button></div><div class="stats"><article class="card featured"><div class="label">Patrimônio atual acompanhado</div><div class="amount">${F.money(total)}</div><div class="tiny">Saldos atuais · não filtrados pelo mês</div></article><article class="card"><div class="label">Reserva de emergência</div><div class="amount">${F.money(reserve)}</div><div class="tiny">${state.wealth.essential?(reserve/state.wealth.essential).toFixed(1).replace('.',',')+' meses do essencial':'Defina seu custo essencial'}</div></article><article class="card"><div class="label">Outros investimentos</div><div class="amount">${F.money(invested)}</div><div class="tiny">Patrimônio informado por você</div></article></div><div class="grid"><article class="card"><div class="section-head"><h2>Seu plano de reserva</h2><button data-action="wealth-plan">Ajustar plano</button></div><div class="tiny">Objetivo configurado: ${state.wealth.months} meses × ${F.money(state.wealth.essential)}</div><div class="progress"><span style="width:${pct(reserve,target)}%"></span></div><div class="metric-pair"><span>${target?pct(reserve,target)+'% da meta':'Defina o custo essencial'}</span><span>${F.money(target)}</span></div><div class="note">${target?'Faltam '+F.money(Math.max(0,target-reserve))+' para a meta.':'Escolha uma meta que faça sentido para sua realidade.'}</div></article><article class="card"><div class="label">Espaço para o próximo aporte</div><div class="amount positive">${F.money(suggested)}</div><div class="tiny">Menor valor entre sua meta mensal, a sobra prevista após aportes e o dinheiro já recebido livre. Não inclui saldo bancário anterior.</div><div class="metric-pair"><span>Planejado por mês</span><span>${F.money(state.wealth.monthly)}</span></div></article></div><div class="notice">Para emergências, priorize acesso rápido ao dinheiro e baixo risco. Confira prazo de resgate, riscos e condições antes de investir. <a class="source-link" href="https://www.gov.br/investidor/pt-br/investir/antes-de-investir/defina-seus-objetivos/emergencias-e-aposentadoria" target="_blank" rel="noopener noreferrer">Orientação da CVM ↗</a></div>${funds.map(f=>`<article class="card goal-card"><div class="section-head"><div><h2>${esc(f.name)}</h2><div class="tiny" style="margin-top:5px">${f.kind==='reserve'?'Reserva':'Investimento'} · ${esc(f.product||'Local não informado')} · ${f.liquidity==='daily'?'Liquidez diária informada':'Resgate com prazo'} · risco ${({low:'baixo',medium:'médio',high:'alto'})[f.risk]}</div></div><span class="row-value positive">${F.money(F.fundBalance(state,f))}</span></div>${f.kind==='reserve'&&(f.liquidity!=='daily'||f.risk!=='low')?'<p class="note negative">Confira se esta caixinha combina com emergências: o resgate tem prazo ou o risco informado não é baixo.</p>':''}<div class="toolbar" style="margin:0"><button class="primary" data-action="fund-deposit" data-id="${esc(f.id)}">＋ Guardar</button><button data-action="fund-withdraw" data-id="${esc(f.id)}">Resgatar</button><button data-action="fund-adjust" data-id="${esc(f.id)}">Atualizar saldo</button><button data-action="fund-edit" data-id="${esc(f.id)}">Editar</button><button data-action="fund-delete" data-id="${esc(f.id)}" class="danger">Excluir</button></div></article>`).join('')||`<article class="card">${empty('A primeira caixinha já é um começo.','Organize onde está sua reserva e acompanhe os aportes.','fund-new')}</article>`}<article class="card" style="margin-top:12px"><div class="section-head"><h2>Últimos aportes e resgates</h2><span class="tiny">HISTÓRICO</span></div>${history.slice(0,20).map(h=>`<div class="row"><div class="row-main"><div class="row-title">${esc(funds.find(f=>f.id===h.fundId)?.name||'Caixinha')}</div><small>${shortDate(h.date)}/${h.date.slice(0,4)} · ${h.kind==='deposit'?'Aporte':'Resgate'}</small></div><span class="row-value">${h.kind==='deposit'?'+':'−'} ${F.money(h.value)}</span><button data-action="transfer-delete" data-id="${esc(h.id)}" title="Desfazer movimentação">×</button></div>`).join('')||'<div class="tiny">Seus aportes e resgates aparecerão aqui.</div>'}</article><p class="note">Aportes são transferências para o patrimônio: reduzem o caixa livre, sem virar despesa ou reduzir o patrimônio total. Resgates fazem o caminho inverso. Não duplique esses movimentos nos lançamentos. Saldos iniciais e atualizações de saldo não movimentam o caixa. Não há compra de ativos nem promessa de rendimento.</p>`}
-function openDebt(id){const d=state.debts.find(d=>d.id===id);modal={kind:'debt',id};$('#modal-title').textContent=d?'Editar compra parcelada':'Nova compra parcelada';$('#fields').innerHTML=field('O que você parcelou?','name','text',d?.name||'',true,'required maxlength="120" placeholder="Ex.: Geladeira, empréstimo"')+field('Para quem você paga?','creditor','text',d?.creditor||'',true,'maxlength="120"')+field('Data da contratação','start','date',d?.start||today(),false,'required')+field('Primeiro vencimento','firstDue','date',d?.firstDue||today(),false,'required')+field('Valor total da compra, com encargos (R$)','total','number',d?d.total/100:'',false,'required min="0.01" max="999999999" step="0.01"')+field('Quantidade de parcelas','count','number',d?.count||12,false,'required min="1" max="600" step="1"')+field('Valor original à vista (R$, opcional)','principal','number',d?.principal?d.principal/100:'',true,'min="0" max="999999999" step="0.01"')+(d?'<div class="tiny" style="grid-column:1/-1">Alterar valor, datas ou quantidade recalcula toda a dívida e exige reconfirmar pagamentos. Alterar apenas nome ou credor preserva as confirmações.</div>':field('Quantas parcelas iniciais já pagou?','paidCount','number',0,true,'required min="0" max="600" step="1"'))+'<div class="tiny" style="grid-column:1/-1">O dia do primeiro vencimento se repete nos meses seguintes, ajustado ao último dia quando necessário. O total é dividido em centavos; diferenças de arredondamento ficam nas primeiras parcelas.</div>';showDialog()}
-function openFund(id){const f=state.funds.find(f=>f.id===id);modal={kind:'fund',id};$('#modal-title').textContent=f?'Editar caixinha':'Nova caixinha';$('#fields').innerHTML=field('Nome','name','text',f?.name||'',true,'required maxlength="120" placeholder="Ex.: Minha reserva"')+`<label>Finalidade<select name="kind"><option value="reserve">Reserva de emergência</option><option value="investment" ${f?.kind==='investment'?'selected':''}>Outro investimento</option></select></label>`+field('Onde está guardado?','product','text',f?.product||'',false,'maxlength="120" placeholder="Conta, instituição ou produto"')+(!f?field('Saldo que já existe (R$)','balance','number',0,true,'required min="0" max="999999999" step="0.01"'):'')+`<label>Liquidez informada<select name="liquidity"><option value="daily">Resgate diário</option><option value="term" ${f?.liquidity==='term'?'selected':''}>Resgate com prazo</option></select></label><label>Risco informado<select name="risk"><option value="low">Baixo</option><option value="medium" ${f?.risk==='medium'?'selected':''}>Médio</option><option value="high" ${f?.risk==='high'?'selected':''}>Alto</option></select></label><div class="tiny" style="grid-column:1/-1">Liquidez e risco são informações fornecidas por você. Confira as condições reais na instituição.</div>`;showDialog()}
-function openTransfer(id,kind){const f=state.funds.find(f=>f.id===id);if(!f)return;modal={kind:'transfer',id,transferKind:kind};$('#modal-title').textContent=kind==='deposit'?'Guardar dinheiro':'Resgatar dinheiro';$('#fields').innerHTML=`<div class="notice" style="grid-column:1/-1">${esc(f.name)} · saldo acompanhado ${F.money(F.fundBalance(state,f))}</div>`+field('Valor (R$)','value','number','',false,'required min="0.01" max="999999999" step="0.01"')+field('Data realizada','date','date',today(),false,`required max="${today()}"`);showDialog()}
-function openWealthPlan(){modal={kind:'wealth-plan'};$('#modal-title').textContent='Seu plano de reserva';$('#fields').innerHTML=field('Custo mensal essencial (R$)','essential','number',state.wealth.essential/100,true,'required min="0" max="999999999" step="0.01"')+field('Quantos meses quer cobrir?','months','number',state.wealth.months,false,'required min="1" max="24" step="1"')+field('Quanto quer guardar por mês (R$)','monthly','number',state.wealth.monthly/100,false,'required min="0" max="999999999" step="0.01"')+'<div class="tiny" style="grid-column:1/-1">Você escolhe a meta. O painel não faz aportes automáticos nem garante que a renda futura se repita.</div>';showDialog()}
-function submitGrowth(e){if(!modal||!['debt','fund','transfer','wealth-plan','fund-adjust'].includes(modal.kind))return false;const data=new FormData(e.target),cash=name=>F.cents(data.get(name)),fail=message=>{$('#form-error').textContent=message;return true};if(modal.kind==='debt'){const d={id:modal.id||uid(),name:String(data.get('name')).trim(),creditor:String(data.get('creditor')).trim(),start:data.get('start'),firstDue:data.get('firstDue'),total:cash('total'),count:Number(data.get('count')),principal:cash('principal')},paidCount=Number(data.get('paidCount')||0),old=state.debts.find(x=>x.id===modal.id);if(!d.name||!F.valid({...state,debts:[d]})||!Number.isInteger(paidCount)||paidCount<0||paidCount>d.count)return fail('Confira as datas, o total e a quantidade de parcelas. O primeiro vencimento deve ser posterior ou igual à contratação.');const changed=old&&['total','count','firstDue'].some(k=>old[k]!==d[k]);if(changed&&!confirm('Recalcular toda a dívida e limpar suas confirmações de pagamento?'))return true;if(changed)clearDebtPaid(d.id);if(old)state.debts=state.debts.map(x=>x.id===d.id?d:x);else{state.debts.push(d);F.debtSchedule(state,d).slice(0,paidCount).forEach(p=>state.paid[p.id+'@'+p.date.slice(0,7)]=true)}selectedDebt=d.id}
-else if(modal.kind==='fund'){const old=state.funds.find(f=>f.id===modal.id),f={id:modal.id||uid(),name:String(data.get('name')).trim(),kind:data.get('kind'),product:String(data.get('product')).trim(),balance:old?old.balance:cash('balance'),adjustment:old?.adjustment||0,liquidity:data.get('liquidity'),risk:data.get('risk')};if(!f.name||!F.valid({...state,funds:old?state.funds.map(x=>x.id===f.id?f:x):[...state.funds,f]}))return fail('Preencha um nome e saldo válidos.');if(old)state.funds=state.funds.map(x=>x.id===f.id?f:x);else state.funds.push(f)}
-else if(modal.kind==='transfer'){const f=state.funds.find(f=>f.id===modal.id),value=cash('value'),date=data.get('date'),t={id:uid(),fundId:f.id,value,date,kind:modal.transferKind};if(t.kind==='withdraw'&&value>F.fundBalance(state,f))return fail('O resgate não pode ser maior que o saldo acompanhado.');if(!F.valid({...state,transfers:[...state.transfers,t]})||date>today())return fail('Informe um valor positivo e uma data já realizada.');if(t.kind==='deposit'&&value>Math.max(0,F.availableAfterSaving(state,date.slice(0,7)))&&!confirm('Este aporte supera o caixa recebido livre registrado neste mês. Você confirmou que existe saldo anterior suficiente fora do painel?'))return true;state.transfers.push(t)}
-else if(modal.kind==='wealth-plan'){const wealth={essential:cash('essential'),monthly:cash('monthly'),months:Number(data.get('months'))};if(!F.valid({...state,wealth}))return fail('Informe valores positivos ou zero e um prazo entre 1 e 24 meses.');state.wealth=wealth}
-else if(modal.kind==='fund-adjust'){const f=state.funds.find(f=>f.id===modal.id),target=cash('balance');if(!Number.isSafeInteger(target)||target<0)return fail('Informe um saldo válido.');f.adjustment=(f.adjustment||0)+target-F.fundBalance(state,f)}
-$('#dialog').close();commit('Atualizado. Um passo a mais na sua organização.');return true}
-function clearDebtPaid(id){Object.keys(state.paid).filter(k=>k.startsWith('debt:'+id+':')).forEach(k=>delete state.paid[k])}
-function handleGrowthAction(a,b){const id=b.dataset.id;if((a==='edit'||a==='delete')&&id?.startsWith('debt:')){const d=state.debts.find(d=>id.startsWith('debt:'+d.id+':'));if(d){if(a==='edit'){openDebt(d.id)}else{view='transactions';selectedDebt=d.id;render();toast('Gerencie a dívida pela lista de parcelas.')}}return true}if(a==='debt-new')openDebt();else if(a==='debt-edit')openDebt(id);else if(a==='debt-details'){selectedDebt=id;render()}else if(a==='debt-close'){selectedDebt=null;render()}else if(a==='debt-delete'){if(confirm('Excluir a dívida inteira e suas parcelas de todos os meses?')){clearDebtPaid(id);state.debts=state.debts.filter(d=>d.id!==id);selectedDebt=null;commit('Dívida excluída.')}}else if(a==='installment-paid'){const key=id+'@'+b.dataset.date.slice(0,7);state.paid[key]=!state.paid[key];commit()}else if(a==='fund-new')openFund();else if(a==='fund-edit')openFund(id);else if(a==='wealth-plan')openWealthPlan();else if(a==='fund-deposit'||a==='fund-withdraw')openTransfer(id,a==='fund-deposit'?'deposit':'withdraw');else if(a==='fund-adjust'){const f=state.funds.find(f=>f.id===id);modal={kind:'fund-adjust',id};$('#modal-title').textContent='Atualizar saldo acompanhado';$('#fields').innerHTML=field('Saldo atual real (R$)','balance','number',F.fundBalance(state,f)/100,true,'required min="0" max="999999999" step="0.01"')+'<div class="tiny" style="grid-column:1/-1">Use para conciliar rendimentos ou variações com o saldo real. Não cria aporte, resgate ou entrada no mês.</div>';showDialog()}else if(a==='fund-delete'){if(confirm('Excluir esta caixinha e todo seu histórico de aportes e resgates? Isso também altera o caixa livre acompanhado.')){state.funds=state.funds.filter(f=>f.id!==id);state.transfers=state.transfers.filter(t=>t.fundId!==id);commit('Caixinha excluída.')}}else if(a==='transfer-delete'){const transfer=state.transfers.find(t=>t.id===id),fund=state.funds.find(f=>f.id===transfer.fundId);if(transfer.kind==='deposit'&&F.fundBalance(state,f)<transfer.value){toast('Este aporte já foi resgatado. Corrija o resgate antes de remover o aporte.');return true}if(confirm('Desfazer esta movimentação?')){state.transfers=state.transfers.filter(t=>t.id!==id);commit('Movimentação desfeita.')}}else return false;return true}
+"use strict";
+let selectedDebt = null;
+function upgradeState(s) {
+  return {
+    ...s,
+    categories: CategoryCatalog.migrate(s),
+    monthSettings: s.monthSettings || {},
+    overrides: s.overrides || {},
+    debts: s.debts || [],
+    funds: s.funds || [],
+    transfers: s.transfers || [],
+    wealth: s.wealth || { monthly: 0, essential: 0, months: 6 },
+  };
+}
+function debtDetails(d) {
+  const x = F.debtSummary(state, d, today());
+  return `<div class="debt-schedule">${x.schedule
+    .map(
+      (e) =>
+        `<div class="tx ${e.done ? "done" : ""} ${!e.done && e.date < today() ? "late" : ""}"><span class="tx-icon">${e.installment}</span><div class="tx-main"><strong class="tx-title">Parcela ${e.installment} de ${e.count}</strong><div class="tx-meta"><span class="due">${fullDate(e.date)}, ${e.done ? "paga" : e.date < today() ? "vencida" : "a vencer"}</span></div></div>${amount(e.value, "tx-value")}<div class="tx-actions"><button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="installment-paid" data-id="${esc(e.id)}" data-date="${e.date}" aria-pressed="${e.done}">${e.done ? icon("check") + "Paga" : "Pagar"}</button></div></div>`,
+    )
+    .join("")}</div>`;
+}
+function wealthView() {
+  const funds = state.funds,
+    total = funds.reduce((a, f) => a + F.fundBalance(state, f), 0),
+    reserve = funds.filter((f) => f.kind === "reserve").reduce((a, f) => a + F.fundBalance(state, f), 0),
+    invested = total - reserve,
+    target = state.wealth.essential * state.wealth.months,
+    t = F.totals(state, month),
+    suggested = Math.max(0, Math.min(state.wealth.monthly, t.closing, F.availableAfterSaving(state, month))),
+    history = [...state.transfers].sort((a, b) => b.date.localeCompare(a.date));
+  const fundCards =
+    funds
+      .map((f) => {
+        const warn = f.kind === "reserve" && (f.liquidity !== "daily" || f.risk !== "low");
+        return `<article class="panel fund-card"><div class="fund-top"><div><h3>${esc(f.name)}</h3><div class="tx-meta"><span class="tag">${f.kind === "reserve" ? "Reserva" : "Investimento"}</span><span class="tag">${f.liquidity === "daily" ? "Resgate no dia" : "Resgate com prazo"}</span><span class="tag">Risco ${{ low: "baixo", medium: "médio", high: "alto" }[f.risk]}</span>${f.product ? `<span class="tag">${esc(f.product)}</span>` : ""}</div></div>${bigAmount(F.fundBalance(state, f), "md")}</div>${warn ? '<p class="note warn">Para emergências, o ideal é resgate no mesmo dia e risco baixo.</p>' : ""}<div class="row-actions">${btn("fund-deposit", "Guardar", { id: f.id, cls: "primary", icon: "plus" })}${btn("fund-withdraw", "Resgatar", { id: f.id, icon: "minus" })}${btn("fund-adjust", "Corrigir saldo", { id: f.id, cls: "ghost" })}${iconBtn("fund-edit", "edit", "Editar " + f.name, f.id)}${iconBtn("fund-delete", "trash", "Excluir " + f.name, f.id, "danger")}</div></article>`;
+      })
+      .join("") ||
+    `<article class="panel">${empty("Nenhuma caixinha ainda", "Crie uma para a reserva de emergência e registre cada vez que guardar dinheiro.", "fund-new", "Criar caixinha")}</article>`;
+  return `${pageHead("Dinheiro guardado", "Caixinhas para a reserva e outros investimentos. Guardar tira do saldo do mês, mas não vira despesa.", btn("fund-new", "Nova caixinha", { cls: "primary", icon: "plus" }))}
+  <div class="summary-strip"><div><span>Total guardado</span>${amount(total)}</div><div><span>Reserva de emergência</span>${amount(reserve)}<small>${state.wealth.essential ? (reserve / state.wealth.essential).toFixed(1).replace(".", ",") + " meses do essencial" : "Defina seu custo essencial"}</small></div><div><span>Outros investimentos</span>${amount(invested)}</div></div>
+  <div class="two-col">
+    <article class="panel">${panelHead("Plano da reserva", `${state.wealth.months} meses de ${esc(F.money(state.wealth.essential))}`, btn("wealth-plan", "Ajustar", { cls: "ghost", icon: "sliders" }))}${progress(pct(reserve, target))}<div class="split-line"><span>${target ? pct(reserve, target) + "% da meta" : "Defina quanto custa o seu mês essencial"}</span>${amount(target)}</div><p class="hint">${target ? (reserve >= target ? "Reserva completa." : "Faltam " + amount(Math.max(0, target - reserve)) + ".") : "Uma referência comum é de 3 a 12 meses de gastos essenciais."}</p></article>
+    <article class="panel">${panelHead("Quanto dá para guardar agora", "O menor valor entre a sua meta mensal, a sobra prevista e o dinheiro já recebido.")}${bigAmount(suggested, "md pos")}<div class="split-line"><span>Meta mensal</span>${amount(state.wealth.monthly)}</div></article>
+  </div>
+  <div class="fund-list">${fundCards}</div>
+  <article class="panel">${panelHead("Histórico", "Últimos aportes e resgates. Remover desfaz o movimento.")}${
+    history.length
+      ? `<div class="tx-list">${history
+          .slice(0, 30)
+          .map(
+            (h) =>
+              `<div class="tx ${h.kind === "deposit" ? "expense" : "income"}"><span class="tx-icon">${icon(h.kind === "deposit" ? "upload" : "download")}</span><div class="tx-main"><strong class="tx-title">${esc(funds.find((f) => f.id === h.fundId)?.name || "Caixinha")}</strong><div class="tx-meta"><span class="tag">${h.kind === "deposit" ? "Guardado" : "Resgatado"}</span><span class="due">${fullDate(h.date)}</span></div></div>${amount(h.value, "tx-value", h.kind === "deposit" ? "+ " : "− ")}<div class="tx-actions">${iconBtn("transfer-delete", "trash", "Desfazer movimento", h.id, "danger")}</div></div>`,
+          )
+          .join("")}</div>`
+      : '<p class="muted">Os aportes e resgates aparecem aqui.</p>'
+  }</article>
+  <p class="hint">Antes de investir, confira prazo de resgate, riscos e custos na instituição. <a class="link" href="https://www.gov.br/investidor/pt-br/investir/antes-de-investir/defina-seus-objetivos/emergencias-e-aposentadoria" target="_blank" rel="noopener noreferrer">Orientação da CVM sobre reserva de emergência</a>.</p>`;
+}
+function openDebt(id) {
+  const d = state.debts.find((d) => d.id === id);
+  modal = { kind: "debt", id };
+  $("#modal-title").textContent = d ? "Editar compra parcelada" : "Nova compra parcelada";
+  $("#fields").innerHTML =
+    field("O que foi parcelado?", "name", "text", d?.name || "", true, 'required maxlength="120" placeholder="Ex.: Geladeira, empréstimo"') +
+    field("Onde ou com quem", "creditor", "text", d?.creditor || "", true, 'maxlength="120" placeholder="Ex.: Cartão Nubank, Loja X"') +
+    moneyField("Valor total, com juros", "total", d ? d.total : "", false, "required") +
+    field("Número de parcelas", "count", "number", d?.count || 12, false, 'required min="1" max="600" step="1"') +
+    field("Data da compra", "start", "date", d?.start || today(), false, "required") +
+    field("Primeira parcela vence em", "firstDue", "date", d?.firstDue || today(), false, "required") +
+    moneyField("Preço à vista (opcional)", "principal", d?.principal ? d.principal : "", true) +
+    (d
+      ? hint("Mudar valor, datas ou número de parcelas recalcula tudo e desmarca os pagamentos. Mudar só o nome mantém tudo.")
+      : field("Parcelas que já foram pagas", "paidCount", "number", 0, true, 'required min="0" max="600" step="1"')) +
+    hint("A parcela vence no mesmo dia nos meses seguintes. Os centavos de arredondamento ficam nas primeiras parcelas.");
+  showDialog({ danger: d ? btn("debt-delete", "Excluir", { id: d.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+}
+function openFund(id) {
+  const f = state.funds.find((f) => f.id === id);
+  modal = { kind: "fund", id };
+  $("#modal-title").textContent = f ? "Editar caixinha" : "Nova caixinha";
+  $("#fields").innerHTML =
+    field("Nome", "name", "text", f?.name || "", true, 'required maxlength="120" placeholder="Ex.: Reserva de emergência"') +
+    selectField(
+      "Para que serve",
+      "kind",
+      [
+        ["reserve", "Reserva de emergência"],
+        ["investment", "Outro investimento"],
+      ],
+      f?.kind || "reserve",
+    ) +
+    field("Onde está guardado", "product", "text", f?.product || "", false, 'maxlength="120" placeholder="Banco ou produto"') +
+    (!f ? moneyField("Quanto já tem guardado", "balance", 0, true, "required") : "") +
+    selectField(
+      "Resgate",
+      "liquidity",
+      [
+        ["daily", "No mesmo dia"],
+        ["term", "Com prazo"],
+      ],
+      f?.liquidity || "daily",
+    ) +
+    selectField(
+      "Risco",
+      "risk",
+      [
+        ["low", "Baixo"],
+        ["medium", "Médio"],
+        ["high", "Alto"],
+      ],
+      f?.risk || "low",
+    ) +
+    hint("Resgate e risco são informações suas, para lembrar. Confira as condições reais na instituição.");
+  showDialog({ danger: f ? btn("fund-delete", "Excluir", { id: f.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+}
+function openTransfer(id, kind) {
+  const f = state.funds.find((f) => f.id === id);
+  if (!f) return;
+  modal = { kind: "transfer", id, transferKind: kind };
+  $("#modal-title").textContent = kind === "deposit" ? "Guardar em " + f.name : "Resgatar de " + f.name;
+  $("#fields").innerHTML =
+    `<p class="full lead">Saldo atual: ${amount(F.fundBalance(state, f))}</p>` +
+    moneyField("Valor", "value", "", false, "required") +
+    field("Quando", "date", "date", today(), false, `required max="${today()}"`);
+  showDialog();
+}
+function openWealthPlan() {
+  modal = { kind: "wealth-plan" };
+  $("#modal-title").textContent = "Plano da reserva";
+  $("#fields").innerHTML =
+    moneyField("Quanto custa o seu mês essencial", "essential", state.wealth.essential, true, "required") +
+    field("Quantos meses quer cobrir", "months", "number", state.wealth.months, false, 'required min="1" max="24" step="1"') +
+    moneyField("Quanto quer guardar por mês", "monthly", state.wealth.monthly, false, "required") +
+    hint("Essencial é o que não dá para cortar: moradia, comida, contas e transporte.");
+  showDialog();
+}
+function submitGrowth(e) {
+  if (!modal || !["debt", "fund", "transfer", "wealth-plan", "fund-adjust"].includes(modal.kind)) return false;
+  const data = new FormData(e.target),
+    cash = (name) => F.cents(data.get(name)),
+    fail = (message) => {
+      $("#form-error").textContent = message;
+      return true;
+    };
+  let message = "Salvo.";
+  if (modal.kind === "debt") {
+    const d = {
+        id: modal.id || uid(),
+        name: String(data.get("name") || "").trim(),
+        creditor: String(data.get("creditor") || "").trim(),
+        start: data.get("start"),
+        firstDue: data.get("firstDue"),
+        total: cash("total"),
+        count: Number(data.get("count")),
+        principal: cash("principal") || 0,
+      },
+      paidCount = Number(data.get("paidCount") || 0),
+      old = state.debts.find((x) => x.id === modal.id);
+    if (!d.name || !F.valid({ ...state, debts: [d] }) || !Number.isInteger(paidCount) || paidCount < 0 || paidCount > d.count)
+      return fail("Confira as datas, o valor total e o número de parcelas. A primeira parcela não pode vencer antes da compra.");
+    const changed = old && ["total", "count", "firstDue"].some((k) => old[k] !== d[k]);
+    if (changed && !confirm("Recalcular todas as parcelas e desmarcar os pagamentos já confirmados?")) return true;
+    if (changed) clearDebtPaid(d.id);
+    if (old) state.debts = state.debts.map((x) => (x.id === d.id ? d : x));
+    else {
+      state.debts.push(d);
+      F.debtSchedule(state, d)
+        .slice(0, paidCount)
+        .forEach((p) => (state.paid[p.id + "@" + p.date.slice(0, 7)] = true));
+    }
+    selectedDebt = d.id;
+    message = old ? "Parcelamento atualizado." : "Parcelamento criado. As parcelas já estão nos meses certos.";
+  } else if (modal.kind === "fund") {
+    const old = state.funds.find((f) => f.id === modal.id),
+      f = {
+        id: modal.id || uid(),
+        name: String(data.get("name") || "").trim(),
+        kind: data.get("kind"),
+        product: String(data.get("product") || "").trim(),
+        balance: old ? old.balance : cash("balance"),
+        adjustment: old?.adjustment || 0,
+        liquidity: data.get("liquidity"),
+        risk: data.get("risk"),
+      };
+    if (!f.name || !F.valid({ ...state, funds: old ? state.funds.map((x) => (x.id === f.id ? f : x)) : [...state.funds, f] }))
+      return fail("Preencha um nome e um saldo válido.");
+    if (old) state.funds = state.funds.map((x) => (x.id === f.id ? f : x));
+    else state.funds.push(f);
+    message = "Caixinha salva.";
+  } else if (modal.kind === "transfer") {
+    const f = state.funds.find((f) => f.id === modal.id),
+      value = cash("value"),
+      date = data.get("date"),
+      t = { id: uid(), fundId: f.id, value, date, kind: modal.transferKind };
+    if (t.kind === "withdraw" && value > F.fundBalance(state, f)) return fail("O resgate não pode ser maior que o saldo da caixinha.");
+    if (!F.valid({ ...state, transfers: [...state.transfers, t] }) || date > today())
+      return fail("Informe um valor maior que zero e uma data que já passou.");
+    if (
+      t.kind === "deposit" &&
+      value > Math.max(0, F.availableAfterSaving(state, date.slice(0, 7))) &&
+      !confirm("Este valor é maior que o dinheiro recebido e livre deste mês. Você tem esse dinheiro guardado de antes?")
+    )
+      return true;
+    state.transfers.push(t);
+    message = t.kind === "deposit" ? "Dinheiro guardado." : "Resgate registrado.";
+  } else if (modal.kind === "wealth-plan") {
+    const wealth = { essential: cash("essential"), monthly: cash("monthly"), months: Number(data.get("months")) };
+    if (!F.valid({ ...state, wealth })) return fail("Informe valores positivos ou zero e de 1 a 24 meses.");
+    state.wealth = wealth;
+    message = "Plano salvo.";
+  } else if (modal.kind === "fund-adjust") {
+    const f = state.funds.find((f) => f.id === modal.id),
+      target = cash("balance");
+    if (!Number.isSafeInteger(target) || target < 0) return fail("Informe um saldo válido.");
+    f.adjustment = (f.adjustment || 0) + target - F.fundBalance(state, f);
+    message = "Saldo corrigido.";
+  }
+  $("#dialog").close();
+  commit(message);
+  return true;
+}
+function clearDebtPaid(id) {
+  Object.keys(state.paid)
+    .filter((k) => k.startsWith("debt:" + id + ":"))
+    .forEach((k) => delete state.paid[k]);
+}
+function deleteDebt(id) {
+  const d = state.debts.find((x) => x.id === id);
+  if (!d) return;
+  if (confirm(`Excluir “${d.name}” e todas as ${d.count} parcelas, de todos os meses?`)) {
+    clearDebtPaid(id);
+    state.debts = state.debts.filter((x) => x.id !== id);
+    if (selectedDebt === id) selectedDebt = null;
+    commit("Parcelamento excluído.");
+  }
+}
+function handleGrowthAction(a, b) {
+  const id = b.dataset.id;
+  if ((a === "edit" || a === "delete" || a === "paid") && id?.startsWith("debt:")) {
+    const d = state.debts.find((d) => id.startsWith("debt:" + d.id + ":"));
+    if (!d) return true;
+    if (a === "edit") openDebt(d.id);
+    else if (a === "delete") deleteDebt(d.id);
+    else {
+      state.paid[id + "@" + month] = !state.paid[id + "@" + month];
+      commit();
+    }
+    return true;
+  }
+  if (a === "debt-new") openDebt();
+  else if (a === "debt-edit") openDebt(id);
+  else if (a === "debt-details") {
+    selectedDebt = id || null;
+    render();
+  } else if (a === "debt-close") {
+    selectedDebt = null;
+    render();
+  } else if (a === "debt-delete") deleteDebt(id);
+  else if (a === "installment-paid") {
+    const key = id + "@" + b.dataset.date.slice(0, 7);
+    state.paid[key] = !state.paid[key];
+    commit();
+  } else if (a === "fund-new") openFund();
+  else if (a === "fund-edit") openFund(id);
+  else if (a === "wealth-plan") openWealthPlan();
+  else if (a === "fund-deposit" || a === "fund-withdraw") openTransfer(id, a === "fund-deposit" ? "deposit" : "withdraw");
+  else if (a === "fund-adjust") {
+    const f = state.funds.find((f) => f.id === id);
+    if (!f) return true;
+    modal = { kind: "fund-adjust", id };
+    $("#modal-title").textContent = "Corrigir saldo de " + f.name;
+    $("#fields").innerHTML =
+      moneyField("Saldo real hoje", "balance", F.fundBalance(state, f), true, "required") +
+      hint("Use para acertar rendimentos ou diferenças com o banco. Não cria aporte, resgate nem receita no mês.");
+    showDialog();
+  } else if (a === "fund-delete") {
+    const f = state.funds.find((f) => f.id === id);
+    if (f && confirm(`Excluir “${f.name}” e todo o histórico de aportes e resgates? O saldo livre dos meses também muda.`)) {
+      state.funds = state.funds.filter((x) => x.id !== id);
+      state.transfers = state.transfers.filter((t) => t.fundId !== id);
+      commit("Caixinha excluída.");
+    }
+  } else if (a === "transfer-delete") {
+    const transfer = state.transfers.find((t) => t.id === id),
+      fund = transfer && state.funds.find((f) => f.id === transfer.fundId);
+    if (!transfer) return true;
+    // Antes, esta conferência usava uma variável inexistente e travava a tela.
+    if (transfer.kind === "deposit" && fund && F.fundBalance(state, fund) < transfer.value) {
+      toast("Parte deste valor já foi resgatada. Desfaça o resgate antes de remover este aporte.");
+      return true;
+    }
+    if (confirm("Desfazer este movimento?")) {
+      state.transfers = state.transfers.filter((t) => t.id !== id);
+      commit("Movimento desfeito.");
+    }
+  } else return false;
+  return true;
+}

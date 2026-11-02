@@ -1,6 +1,25 @@
-const fs=require('node:fs'),path=require('node:path');
-const root=__dirname,dist=path.join(root,'dist');fs.mkdirSync(dist,{recursive:true});
-for(const file of ['appearance-model.js','avunara.js','avunara.css','font.css','catalog.js','security.js','experience.js','premium.css','_headers','index.html','shared-engine.js','shared.js','shared.css','style.css','growth.css','web.css','monthly.css','monthly.js','auth.css','config.js','cloud-store.js','auth-errors.js','auth.js','engine.js','growth.js','app.js','theme.js','favicon.svg'])fs.copyFileSync(path.join(root,file),path.join(dist,file));
-if(fs.existsSync(path.join(root,'assets')))fs.cpSync(path.join(root,'assets'),path.join(dist,'assets'),{recursive:true});
-fs.cpSync(path.join(root,'vendor'),path.join(dist,'vendor'),{recursive:true});
-console.log('Site estático pronto em dist/.');
+// Prepara a pasta dist/ com só o que o site precisa. Usado pelo GitHub Actions.
+const fs = require("node:fs"),
+  path = require("node:path");
+const root = __dirname,
+  dist = path.join(root, "dist");
+const files = [
+  "index.html", "vertice.css", "manifest.webmanifest", "favicon.svg", "icon-192.png", "icon-512.png",
+  "icon-maskable-512.png", "apple-touch-icon.png", "og.png", "_headers", "config.js",
+  "appearance-model.js", "icons.js", "theme.js", "catalog.js", "security.js", "shared-engine.js", "engine.js",
+  "ui.js", "growth.js", "monthly.js", "cloud-store.js", "auth-errors.js", "auth.js", "shared.js",
+  "experience.js", "home.js", "app.js",
+];
+fs.rmSync(dist, { recursive: true, force: true });
+fs.mkdirSync(dist, { recursive: true });
+for (const file of files) fs.copyFileSync(path.join(root, file), path.join(dist, file));
+for (const dir of ["assets", "vendor"]) fs.cpSync(path.join(root, dir), path.join(dist, dir), { recursive: true });
+// Confere se todo script e estilo citado no HTML foi copiado.
+const html = fs.readFileSync(path.join(dist, "index.html"), "utf8");
+const refs = [...html.matchAll(/(?:src|href)="([^"#:]+)"/g)].map((m) => m[1]);
+const missing = refs.filter((r) => !fs.existsSync(path.join(dist, r)));
+if (missing.length) {
+  console.error("Arquivos citados no HTML e ausentes em dist/: " + missing.join(", "));
+  process.exit(1);
+}
+console.log("Site pronto em dist/ (" + files.length + " arquivos + assets e vendor).");

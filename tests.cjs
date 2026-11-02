@@ -1,93 +1,951 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-require('./appearance-model.js');
-require('./catalog.js');
-require('./security.js');
-require('./shared-engine.js');
-require('./engine.js');
-const F=globalThis.Finance;
-let checks=0;
-function test(name,fn){fn();checks++;console.log('OK '+name)}
-const blank=()=>({version:1,entries:[],shifts:[],shiftPaid:[],holidays:[],paid:{},goals:[],budget:0});
-test('Plantões: útil 50, sábado/domingo 100 e feriado útil 100',()=>{assert.equal(F.rate('2026-10-23',[]),5000);assert.equal(F.rate('2026-10-24',[]),10000);assert.equal(F.rate('2026-10-25',[]),10000);assert.equal(F.rate('2026-10-23',['2026-10-23']),10000)});
-test('Feriado no fim de semana não dobra a tarifa',()=>assert.equal(F.rate('2026-10-24',['2026-10-24']),10000));
-test('Calendário: virada do ano e fevereiro bissexto',()=>{assert.equal(F.shiftMonth('2026-12',1),'2027-01');assert.equal(F.shiftMonth('2026-01',-1),'2025-12');assert.equal(F.dateFor('2028-02',31),'2028-02-29');assert.equal(F.dateFor('2027-02',31),'2027-02-28')});
-const s=blank();s.entries=[{id:'salary',name:'Salário',type:'income',value:300000,date:'2026-10-05',recurring:true,end:'',category:'Receitas'},{id:'rent',name:'Aluguel',type:'expense',value:100000,date:'2026-10-31',recurring:true,end:'2027-02',category:'Moradia'},{id:'market',name:'Mercado',type:'expense',value:50000,date:'2026-10-15',recurring:false,end:'',category:'Alimentação'}];s.shifts=['2026-10-23','2026-10-24'];s.shiftPaid=['2026-10-23'];s.paid={'salary@2026-10':true,'rent@2026-10':true};
-test('Saldo previsto inclui plantões, disponível considera confirmações',()=>{const t=F.totals(s,'2026-10');assert.equal(t.income,315000);assert.equal(t.expense,150000);assert.equal(t.balance,165000);assert.equal(t.available,205000);assert.equal(t.shiftTotal,15000)});
-test('Recorrência respeita início, fim e vencimento no dia 31',()=>{assert.equal(F.entries(s,'2026-09').length,0);assert.equal(F.entries(s,'2027-02').find(e=>e.id==='rent').date,'2027-02-28');assert.equal(F.entries(s,'2027-03').length,1)});
-test('Confirmação não se repete no próximo mês',()=>assert.equal(F.totals(s,'2026-11').received,0));
-test('Previsão não repete gasto avulso nem escala',()=>{const t=F.forecast(s,'2026-10');assert.equal(t.income,300000);assert.equal(t.expense,100000);assert.equal(t.shiftTotal,0);assert.equal(t.closing,365000)});
-test('Valores monetários usam centavos',()=>{assert.equal(F.cents('149.90'),14990);assert.equal(F.cents(0.1)+F.cents(0.2),30)});
-test('Backup aceita dados válidos e rejeita dados corrompidos',()=>{assert.ok(F.valid(s));assert.ok(!F.valid({...s,version:2}));assert.ok(!F.valid({...s,shifts:['2026-02-31']}));assert.ok(!F.valid({...s,entries:[{...s.entries[0],value:-1}]}));assert.ok(!F.valid({...s,shiftPaid:['2026-12-25']}));assert.ok(!F.valid({...s,shifts:['2026-10-23','2026-10-23']}))});
-function context(){const nodes=new Map();const get=key=>{if(!nodes.has(key))nodes.set(key,{value:'',textContent:'',innerHTML:'',style:{},files:[],dataset:{},setAttribute(){},classList:{toggle(){},add(){},remove(){}},listeners:{},addEventListener(name,fn){this.listeners[name]=fn},showModal(){},close(){},focus(){},setSelectionRange(){}});return nodes.get(key)};const store=new Map(),document={listeners:{},body:{classList:{toggle(){}}},querySelectorAll:()=>[],querySelector:get,addEventListener(name,fn){this.listeners[name]=fn},createElement(){return {click(){}}}};const c={document,localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)},crypto:{randomUUID:()=>Math.random().toString(36).slice(2)},console,Date,Intl,JSON,Number,String,Object,Array,Math,RegExp,Set,FormData:class{constructor(values){this.values=values||{}}get(k){return this.values[k]??null}has(k){return k in this.values}},Blob,URL,setTimeout:()=>0,clearTimeout(){},confirm:()=>true};c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(__dirname+'/appearance-model.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/catalog.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/security.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/shared-engine.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/engine.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/growth.js','utf8'),c);vm.runInContext('function navIcon(k){return k} function animatePage(){}',c);vm.runInContext(fs.readFileSync(__dirname+'/monthly.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/shared.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/experience.js','utf8'),c);vm.runInContext('const Appearance={get:()=>({...AppearanceModel.defaults}),sync(){},detach(){},panel:()=>"<p>Preferências visuais</p>"}',c);vm.runInContext(fs.readFileSync(__dirname+'/avunara.js','utf8'),c);vm.runInContext(fs.readFileSync(__dirname+'/app.js','utf8'),c);return {c,get,document,run:code=>vm.runInContext(code,c)}}
-test('Interface: oito páginas renderizam vazias e com demonstração',()=>{const {run,get,document}=context();for(const v of ['shared','transactions','categories','forecast','goals','wealth','appearance','settings']){run(`view='${v}';render()`);assert.ok(get('#main').innerHTML.length>100)}document.listeners.click({target:{closest:()=>({dataset:{action:'demo'}})}});for(const v of ['shared','transactions','categories','forecast','goals','wealth','appearance','settings']){run(`view='${v}';render()`);assert.ok(get('#main').innerHTML.length>100)}assert.ok(run('Finance.valid(state)'));assert.equal(run('state.entries.length'),6)});
-test('Interface: seleção de plantão, feriado e recebimento',()=>{const {run,document}=context();run('var Account={canUseShifts:true,saveState:()=>true}');const click=(action,date)=>document.listeners.click({target:{closest:()=>({dataset:{action,date}})}});click('day','2026-10-23');assert.equal(run('state.shifts.length'),1);click('shift-paid','2026-10-23');assert.equal(run('state.shiftPaid.length'),1);run('holidayMode=true');click('day','2026-10-23');assert.equal(run("Finance.rate('2026-10-23',state.holidays)"),10000);run('holidayMode=false');click('day','2026-10-23');assert.equal(run('state.shiftPaid.length'),0);assert.equal(run('state.shifts.length'),0)});
-test('Interface: texto de usuário é escapado no HTML',()=>{const {run,get}=context();run("state.goals=[{id:'g',name:'<script>alert(1)</script>',target:10000,saved:100}];view='goals';render()");assert.ok(!get('#main').innerHTML.includes('<script>'));assert.ok(get('#main').innerHTML.includes('&lt;script&gt;'))});
-const debt={id:'d1',name:'Geladeira',creditor:'Loja',start:'2026-10-01',firstDue:'2026-10-31',total:10000,principal:9000,count:3};
-test('Parcelamento distribui centavos sem alterar o total',()=>{const x={...blank(),debts:[debt]};const list=F.debtSchedule(x,debt);assert.deepEqual(list.map(e=>e.value),[3334,3333,3333]);assert.equal(list.reduce((a,e)=>a+e.value,0),10000);assert.equal(list[1].date,'2026-11-30');assert.equal(list[2].date,'2026-12-31')});
-test('Parcelas entram apenas uma vez nos meses corretos',()=>{const x={...blank(),debts:[debt]};assert.equal(F.totals(x,'2026-09').expense,0);assert.equal(F.totals(x,'2026-10').expense,3334);assert.equal(F.totals(x,'2026-11').expense,3333);assert.equal(F.totals(x,'2027-01').expense,0)});
-test('Dívida calcula atraso, pagamento, saldo restante e fim',()=>{const x={...blank(),debts:[debt]};x.paid['debt:d1:0@2026-10']=true;const t=F.debtSummary(x,debt,'2026-12-01');assert.equal(t.paidCount,1);assert.equal(t.remaining,6666);assert.equal(t.overdue.length,1);assert.equal(t.last,'2026-12-31');assert.equal(t.cost,1000)});
-test('Projeção inclui a próxima parcela e termina após quitação',()=>{const x={...blank(),debts:[debt]};assert.equal(F.forecast(x,'2026-10').expense,3333);assert.equal(F.forecast(x,'2026-12').expense,0)});
-test('Backup antigo continua válido e novos campos são validados',()=>{assert.ok(F.valid(blank()));assert.ok(F.valid({...blank(),debts:[debt]}));assert.ok(!F.valid({...blank(),debts:[{...debt,count:0}]}));assert.ok(!F.valid({...blank(),debts:[{...debt,firstDue:'2026-09-01'}]}));assert.ok(!F.valid({...blank(),debts:[{...debt,total:1}]}))});
-const fund={id:'f1',name:'Reserva',kind:'reserve',product:'Conta',balance:10000,liquidity:'daily',risk:'low'};
-test('Aportes e resgates movimentam caixa sem duplicar despesas',()=>{const x={...blank(),funds:[fund],transfers:[{id:'t1',fundId:'f1',date:'2026-10-10',kind:'deposit',value:5000},{id:'t2',fundId:'f1',date:'2026-10-11',kind:'withdraw',value:2000}]};x.entries=[{...s.entries[0],value:20000}];x.paid={'salary@2026-10':true};assert.equal(F.fundBalance(x,fund),13000);assert.equal(F.savingFlow(x,'2026-10'),3000);assert.equal(F.totals(x,'2026-10').expense,0);assert.equal(F.availableAfterSaving(x,'2026-10'),17000);assert.ok(F.valid(x))});
-test('Conciliação aceita perdas sem criar um resgate fictício',()=>{const f={...fund,balance:0,adjustment:-2000},x={...blank(),funds:[f],transfers:[{id:'t',fundId:'f1',date:'2026-10-10',kind:'deposit',value:10000}]};assert.equal(F.fundBalance(x,f),8000);assert.equal(F.savingFlow(x,'2026-10'),10000);assert.ok(F.valid(x));assert.ok(!F.valid({...x,funds:[{...f,adjustment:-20000}]}))});
-test('Conselhos detectam atraso e déficit com explicação dos valores',()=>{const x={...blank(),debts:[debt]};const cards=F.advice(x,'2026-10','2026-12-01');assert.ok(cards.some(c=>c.title.includes('atrasadas')));assert.ok(cards.some(c=>c.title.includes('pausa')));assert.ok(cards.every(c=>c.text.length>30))});
-test('Novas telas e formulários renderizam sem dados e com registros',()=>{const {run,get}=context();for(const v of ['transactions','wealth','categories']){run(`view='${v}';render()`);assert.ok(get('#main').innerHTML.length>300)}run(`state.debts=[${JSON.stringify(debt)}];state.funds=[${JSON.stringify(fund)}];selectedDebt='d1'`);for(const v of ['transactions','wealth','categories']){run(`view='${v}';render()`);assert.ok(get('#main').innerHTML.length>300)}for(const code of ["openDebt('d1')","openDebt()","openFund('f1')","openFund()","openTransfer('f1','deposit')","openWealthPlan()"]){run(code);assert.ok(get('#fields').innerHTML.includes('input'))}});
-test('Formulário cadastra dívida e confirma parcelas já pagas',()=>{const {run}=context();run("modal={kind:'debt'};$('#form').listeners.submit({preventDefault(){},target:{name:'Notebook',creditor:'Loja',start:'2026-01-01',firstDue:'2026-01-31',total:'1200',count:'12',principal:'1000',paidCount:'3'}})");assert.equal(run('state.debts.length'),1);assert.equal(run('Finance.debtSummary(state,state.debts[0],today()).paidCount'),3);assert.ok(run('Finance.valid(state)'))});
-test('Formulários criam reserva, registram aporte e impedem resgate maior',()=>{const {run,get}=context();run("modal={kind:'fund'};$('#form').listeners.submit({preventDefault(){},target:{name:'Reserva',kind:'reserve',product:'Conta',balance:'100',liquidity:'daily',risk:'low'}})");assert.equal(run('state.funds.length'),1);run("modal={kind:'transfer',id:state.funds[0].id,transferKind:'deposit'};$('#form').listeners.submit({preventDefault(){},target:{value:'50',date:today()}})");assert.equal(run('Finance.fundBalance(state,state.funds[0])'),15000);run("modal={kind:'transfer',id:state.funds[0].id,transferKind:'withdraw'};$('#form').listeners.submit({preventDefault(){},target:{value:'200',date:today()}})");assert.equal(run('state.transfers.length'),1);assert.ok(get('#form-error').textContent.includes('maior'));assert.ok(run('Finance.valid(state)'))});
-test('Visão geral suporta aporte exatamente igual à receita',()=>{const {run,get}=context();run(`state.entries=[${JSON.stringify({...s.entries[0],date:'2026-10-01',value:10000})}];state.funds=[${JSON.stringify({...fund,balance:0})}];state.transfers=[{id:'t',fundId:'f1',date:'2026-10-10',kind:'deposit',value:10000}];month='2026-10';view='overview';render()`);assert.equal(run("Finance.availableAfterSaving(state,'2026-10')"),-10000);assert.ok(get('#main').innerHTML.includes('Disponível confirmado'))});
-test('Acumulado da previsão desconta aportes líquidos sem virar despesa',()=>{const x={...blank(),funds:[fund],transfers:[{id:'t',fundId:'f1',date:'2026-10-10',kind:'deposit',value:10000}],entries:[{...s.entries[0],value:100000}]};const next=F.forecast(x,'2026-10');assert.equal(next.closing,190000);assert.equal(next.expense,0)});
-test('Conciliação de perda mantém histórico e não cria saída fictícia',()=>{const {run}=context();run(`state.funds=[${JSON.stringify({...fund,balance:0})}];state.transfers=[{id:'t',fundId:'f1',date:today(),kind:'deposit',value:10000}];modal={kind:'fund-adjust',id:'f1'};$('#form').listeners.submit({preventDefault(){},target:{balance:'80'}})`);assert.equal(run('Finance.fundBalance(state,state.funds[0])'),8000);assert.equal(run('state.transfers.length'),1);assert.ok(run('Finance.valid(state)'))});
-test('Ajuste pontual altera apenas o mês escolhido',()=>{const x={...blank(),entries:[s.entries[1]],overrides:{'rent@2026-11':{value:140000,day:12,name:'Aluguel ajustado'}}};assert.equal(F.totals(x,'2026-10').expense,100000);assert.equal(F.totals(x,'2026-11').expense,140000);assert.equal(F.entries(x,'2026-11')[0].date,'2026-11-12');assert.equal(F.totals(x,'2026-12').expense,100000);assert.ok(F.valid(x))});
-test('Mudança futura preserva histórico e respeita a próxima revisão',()=>{const e={...s.entries[1],end:'',revisions:[{from:'2026-11',value:120000,day:31},{from:'2027-01',value:130000,day:31}]},x={...blank(),entries:[e]};assert.equal(F.totals(x,'2026-10').expense,100000);assert.equal(F.totals(x,'2026-12').expense,120000);assert.equal(F.totals(x,'2027-02').expense,130000);assert.equal(F.entries(x,'2027-02')[0].date,'2027-02-28')});
-test('Ocultar uma recorrência não remove os outros meses',()=>{const x={...blank(),entries:[s.entries[1]],overrides:{'rent@2026-11':{skipped:true}}};assert.equal(F.entries(x,'2026-11').length,0);assert.equal(F.entries(x,'2026-12').length,1);assert.equal(F.entries(x,'2026-10').length,1)});
-test('Limite e saldo inicial são independentes por mês',()=>{const x={...blank(),budget:10000,monthSettings:{'2026-11':{opening:50000,budget:25000,note:'Ajuste'}}};assert.equal(F.budgetFor(x,'2026-10'),10000);assert.equal(F.budgetFor(x,'2026-11'),25000);assert.equal(F.totals(x,'2026-11').available,50000);assert.equal(F.totals(x,'2026-12').available,0);assert.ok(F.valid(x))});
-test('Projeção atravessa dezembro e respeita saldo manual no destino',()=>{const x={...blank(),entries:[{...s.entries[0],value:10000}],monthSettings:{'2026-12':{opening:5000},'2027-02':{opening:1000}}};const list=F.timeline(x,'2026-12',4);assert.deepEqual(list.map(t=>t.month),['2026-12','2027-01','2027-02','2027-03']);assert.deepEqual(list.map(t=>t.projectedClosing),[15000,25000,11000,21000]);assert.equal(F.forecast(x,'2027-01').closing,11000)});
-test('Validação de backup rejeita ajustes e meses inválidos',()=>{assert.ok(!F.valid({...blank(),monthSettings:{'2026-13':{budget:2}}}));assert.ok(!F.valid({...blank(),overrides:{'inexistente@2026-11':{value:200}}}));assert.ok(!F.valid({...blank(),entries:[s.entries[1]],overrides:{'rent@2026-11':{id:'outro',value:200}}}));assert.ok(!F.valid({...blank(),entries:[s.entries[1]],overrides:{'rent@2026-11':{day:32}}}))});
-test('Editor recorrente salva só no mês padrão e preserva pagamento anterior',()=>{const {run,get}=context();run(`state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';state.paid['rent@2026-10']=true;openMonthlyEntry('rent');$('#form').listeners.submit({preventDefault(){},target:{scope:'month',name:'Aluguel',category:'Moradia',value:'1250',day:'15',done:'on'}})`);assert.equal(run("Finance.totals(state,'2026-11').expense"),125000);assert.equal(run("Finance.totals(state,'2026-10').expense"),100000);assert.equal(run("Finance.totals(state,'2026-12').expense"),100000);assert.equal(run("state.paid['rent@2026-10']"),true);assert.equal(run("Finance.entries(state,'2026-11')[0].done"),true)});
-test('Editor aplica mudança futura sem reescrever meses anteriores',()=>{const {run}=context();run(`state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';modal={kind:'monthly-entry',id:'rent',month};$('#form').listeners.submit({preventDefault(){},target:{scope:'future',name:'Aluguel',category:'Moradia',value:'1500',day:'31'}})`);assert.equal(run("Finance.totals(state,'2026-10').expense"),100000);assert.equal(run("Finance.totals(state,'2026-12').expense"),150000);assert.equal(run("Finance.entries(state,'2027-02')[0].date"),'2027-02-28');assert.ok(run('Finance.valid(state)'))});
-test('Ajustar mês aceita saldo zero explícito e mantém o mês vizinho',()=>{const {run}=context();run("month='2026-11';openMonthSettings();$('#form').listeners.submit({preventDefault(){},target:{opening:'0',budget:'1800',note:'Viagem'}})");assert.equal(run("Finance.monthConfig(state,'2026-11').opening"),0);assert.equal(run("Finance.budgetFor(state,'2026-11')"),180000);assert.equal(run("Finance.budgetFor(state,'2026-12')"),0);assert.ok(run('Finance.valid(state)'))});
-test('Cópia não duplica avulsos nem copia recorrência, parcela ou pagamentos',()=>{const {run}=context();run(`state.entries=${JSON.stringify(s.entries)};state.debts=[${JSON.stringify(debt)}];state.paid['market@2026-10']=true;copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-10','2026-11',{entries:true},uid)`);assert.equal(run("state.entries.filter(e=>!e.recurring&&e.date.startsWith('2026-11')).length"),1);assert.equal(run("Finance.entries(state,'2026-11').find(e=>e.name==='Mercado').done"),false);assert.equal(run('state.debts.length'),1);assert.ok(run('Finance.valid(state)'))});
-test('Cópia de escala ignora dias inexistentes e não leva confirmações',()=>{const {run}=context();run("state.shifts=['2026-01-28','2026-01-30','2026-01-31'];state.shiftPaid=['2026-01-28'];copyMonthData(state,'2026-01','2026-02',{shifts:true},uid);copyMonthData(state,'2026-01','2026-02',{shifts:true},uid)");assert.equal(run("state.shifts.filter(d=>d.startsWith('2026-02')).length"),1);assert.equal(run("state.shiftPaid.includes('2026-02-28')"),false)});
-test('Visão anual renderiza 12 meses e navegação preserva dados',()=>{const {run,get}=context();run("month='2026-12';view='forecast';render()");assert.equal((get('#main').innerHTML.match(/class="year-card /g)||[]).length,12);run("setMonth('2027-01')");assert.equal(run('month'),'2027-01');run("setMonth('2027-13')");assert.equal(run('month'),'2027-01');assert.ok(run('Finance.valid(state)'))});
-test('Cópia encadeada preserva origem e evita nova duplicação',()=>{const {run}=context();run(`state.entries=[${JSON.stringify(s.entries[2])}];copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-11','2026-12',{entries:true},uid);copyMonthData(state,'2026-10','2026-12',{entries:true},uid)`);assert.equal(run("state.entries.filter(e=>e.date.startsWith('2026-12')).length"),1)});
-test('Editor em fevereiro preserva dia 31 original para mudanças futuras',()=>{const {run,get}=context();run(`state.entries=[${JSON.stringify({...s.entries[1],end:''})}];month='2027-02';openMonthlyEntry('rent')`);assert.ok(get('#fields').innerHTML.includes('name="day" type="number" value="31"'))});
-test('Aviso de orçamento usa o limite específico e respeita limite zero',()=>{const x={...blank(),entries:[s.entries[1]],budget:200000,monthSettings:{'2026-11':{budget:50000},'2026-12':{budget:0}}};assert.ok(F.advice(x,'2026-11','2026-10-01').some(c=>c.title.includes('ultrapassado')));assert.ok(!F.advice(x,'2026-12','2026-10-01').some(c=>c.title.includes('ultrapassado')))});
-test('Ocultar e restaurar uma conta mantém as confirmações dos outros meses',()=>{const {run}=context();run(`state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';state.paid['rent@2026-10']=true;modal={kind:'remove-recurring',id:'rent',month};$('#form').listeners.submit({preventDefault(){},target:{scope:'month'}})`);assert.equal(run("Finance.entries(state,'2026-11').length"),0);run("handleMonthAction('restore-month-entry',{dataset:{id:'rent'}})");assert.equal(run("Finance.entries(state,'2026-11').length"),1);assert.equal(run("state.paid['rent@2026-10']"),true);assert.ok(run('Finance.valid(state)'))});
-const sharedProfiles=[{id:'ana',name:'Ana',kind:'person',color:'#9eafff'},{id:'bruno',name:'Bruno',kind:'person',color:'#75d9b1'},{id:'extra',name:'Diversos',kind:'pocket',color:'#e9b76c'}];
-const sharedItem=(patch={})=>({id:'rent',name:'Aluguel',type:'expense',value:100001,date:'2026-10-31',recurring:true,end:'',category:'Casa',mode:'equal',members:['ana','bruno'],weights:{},...patch});
-const sharedState=(items)=>({...blank(),shared:{profiles:structuredClone(sharedProfiles),items}});
-test('Compartilhado: divide centavos sem perder ou duplicar dinheiro',()=>{const x=sharedState([sharedItem()]);assert.ok(F.valid(x));assert.deepEqual(SharedFinance.entries(x,'2026-10').map(e=>e.value),[50001,50000]);assert.equal(F.totals(x,'2026-10').expense,100001);for(let value=1;value<300;value++)assert.equal(SharedFinance.allocate(value,[1,2,3]).reduce((a,b)=>a+b,0),value)});
-test('Compartilhado: proporcional usa receitas do mês de cada participante',()=>{const x=sharedState([sharedItem({id:'salary-a',type:'income',value:300000,mode:'personal',owner:'ana'}),sharedItem({id:'salary-b',type:'income',value:100000,mode:'personal',owner:'bruno'}),sharedItem({mode:'income',value:120000})]);assert.deepEqual(SharedFinance.shares(x,x.shared.items[2],'2026-10').map(p=>p.value),[90000,30000]);const people=SharedFinance.summary(x,'2026-10');assert.equal(people[0].balance,210000);assert.equal(people[1].balance,70000);assert.equal(F.totals(x,'2026-10').income,400000);assert.equal(F.totals(x,'2026-10').expense,120000)});
-test('Compartilhado: sem renda mantém conta nos totais com divisão provisória',()=>{const x=sharedState([sharedItem({mode:'income'})]);assert.equal(F.totals(x,'2026-10').expense,100001);assert.deepEqual(SharedFinance.shares(x,x.shared.items[0],'2026-10').map(p=>p.value),[50001,50000])});
-test('Compartilhado: percentual e valor exato fecham a conta',()=>{const percent=sharedItem({mode:'percent',weights:{ana:6000,bruno:4000}}),amount=sharedItem({id:'market',mode:'amount',weights:{ana:40001,bruno:60000}}),x=sharedState([percent,amount]);assert.ok(F.valid(x));assert.deepEqual(SharedFinance.shares(x,percent,'2026-10').map(p=>p.value),[60001,40000]);assert.deepEqual(SharedFinance.shares(x,amount,'2026-10').map(p=>p.value),[40001,60000]);assert.ok(!F.valid(sharedState([{...percent,weights:{ana:6000,bruno:3000}}])));assert.ok(!F.valid(sharedState([{...amount,weights:{ana:40000,bruno:60000}}])))});
-test('Compartilhado: confirmação é individual e não passa ao próximo mês',()=>{const x=sharedState([sharedItem()]);x.paid['shared:rent:ana@2026-10']=true;assert.equal(F.totals(x,'2026-10').paid,50001);assert.equal(SharedFinance.summary(x,'2026-10')[1].pending,50000);assert.equal(F.totals(x,'2026-11').paid,0);assert.equal(F.entries(x,'2027-02')[0].date,'2027-02-28')});
-test('Compartilhado: avulsos, carteiras e encerramento respeitam os meses',()=>{const x=sharedState([sharedItem({end:'2026-11'}),sharedItem({id:'extra-cost',mode:'personal',owner:'extra',recurring:false,value:2000})]);assert.equal(F.totals(x,'2026-10').expense,102001);assert.equal(F.totals(x,'2026-11').expense,100001);assert.equal(F.totals(x,'2026-12').expense,0);assert.equal(SharedFinance.summary(x,'2026-10')[2].expense,2000)});
-test('Compartilhado: backup rejeita perfis duplicados, referências e formatos inválidos',()=>{const x=sharedState([sharedItem()]);assert.ok(F.valid(JSON.parse(JSON.stringify(x))));assert.ok(!F.valid({...x,shared:{...x.shared,profiles:[...sharedProfiles,sharedProfiles[0]]}}));assert.ok(!F.valid(sharedState([sharedItem({members:['nao-existe']})])));assert.ok(!F.valid(sharedState([sharedItem({id:'<script>'})])));assert.ok(!F.valid(sharedState([sharedItem({mode:'income',members:['extra']})])));assert.ok(!F.valid(sharedState([sharedItem({end:'2026-09'})])))});
-test('Compartilhado: páginas escapam nomes e resumo geral mostra partes',()=>{const {run,get}=context();run(`state=${JSON.stringify(sharedState([sharedItem()]))};month='2026-10';state.shared.profiles[0].name='<img src=x>';view='shared';render()`);assert.ok(get('#main').innerHTML.includes('Pessoas e carteiras'));assert.ok(get('#main').innerHTML.includes('&lt;img src=x&gt;'));assert.ok(!get('#main').innerHTML.includes('<img src=x>'));run("view='transactions';render()");assert.ok(get('#main').innerHTML.includes('shared-edit'));run("view='overview';render()");assert.ok(get('#main').innerHTML.includes('Pessoas e carteiras'))});
-test('Compartilhado: cadastro e edição de perfil preservam dados anteriores',()=>{const {run}=context();run("modal={kind:'shared-profile'};submitShared({target:{name:'Ana',kind:'person',color:'#9eafff'}})");assert.equal(run('state.shared.profiles.length'),1);assert.ok(run('Finance.valid(state)'));run("modal={kind:'shared-profile',id:state.shared.profiles[0].id};submitShared({target:{name:'Ana Silva',kind:'person',color:'#75d9b1'}})");assert.equal(run('state.shared.profiles[0].name'),'Ana Silva')});
-test('Compartilhado: formulário exige percentuais e valores corretos',()=>{const {run,get}=context();run(`state=${JSON.stringify(sharedState([]))};month='2026-10';modal={kind:'shared-item'};submitShared({target:{name:'Casa',type:'expense',value:'1000',date:'2026-10-05',category:'Casa',mode:'percent','member-ana':'on','member-bruno':'on','weight-ana':'60','weight-bruno':'30'}})`);assert.equal(run('state.shared.items.length'),0);assert.ok(get('#form-error').textContent.includes('100%'));run("submitShared({target:{name:'Casa',type:'expense',value:'1000',date:'2026-10-05',category:'Casa',mode:'percent','member-ana':'on','member-bruno':'on','weight-ana':'60','weight-bruno':'40'}})");assert.equal(run('state.shared.items.length'),1);assert.ok(run('Finance.valid(state)'))});
-test('Compartilhado: bloqueia excluir perfil com contas e paga apenas uma parte',()=>{const {run}=context();run(`state=${JSON.stringify(sharedState([sharedItem()]))};month='2026-10';handleSharedAction('shared-profile-delete',{dataset:{id:'ana'}})`);assert.equal(run('state.shared.profiles.length'),3);run("handleSharedAction('shared-paid',{dataset:{id:'shared:rent:ana'}})");assert.equal(run("Finance.totals(state,'2026-10').paid"),50001);run("handleSharedAction('shared-delete',{dataset:{id:'rent'}})");assert.equal(run('state.shared.items.length'),0);assert.equal(run('Object.keys(state.paid).length'),0)});
-test('Compartilhado: renda alterada pede nova conferência das partes proporcionais',()=>{const {run}=context();const x=sharedState([sharedItem({id:'salary',type:'income',mode:'personal',owner:'ana',value:300000}),sharedItem({mode:'income'})]);x.paid['shared:rent:ana@2026-10']=true;run(`state=${JSON.stringify(x)};month='2026-10';modal={kind:'shared-item',id:'salary'};submitShared({target:{name:'Salário',type:'income',value:'4000',date:'2026-10-31',category:'Receitas',mode:'personal',owner:'ana',recurring:'on'}})`);assert.equal(run("state.paid['shared:rent:ana@2026-10']"),undefined);assert.equal(run('state.shared.items[0].value'),400000)});
-test('A navegação remove telas duplicadas e protege plantões no modo local',()=>{const {run,get,document}=context();run("view='shared';render()");assert.ok(!get('#nav').innerHTML.includes('Conselhos'));assert.ok(!get('#nav').innerHTML.includes('Dívidas e parcelas'));assert.ok(!get('#nav').innerHTML.includes('Contas recorrentes'));assert.ok(!get('#nav').innerHTML.includes('Plantões'));document.listeners.click({target:{closest:()=>({dataset:{view:'shifts'}})}});assert.equal(run('view'),'shared');document.listeners.click({target:{closest:()=>({dataset:{action:'day',date:'2026-10-31'}})}});assert.equal(run('state.shifts.length'),0);run("view='coach';render()");assert.equal(run('view'),'shared')});
-test('Categorias têm formulário, arquivamento e preservam o histórico',()=>{const {run}=context();run("modal={kind:'category'};submitCategory({target:{name:'Pets',type:'expense',color:'#358268'}})");assert.ok(run("state.categories.some(c=>c.name==='Pets')"));run("state.entries=[{id:'pet',name:'Ração',type:'expense',value:1000,date:month+'-01',category:'Pets',recurring:false,end:''}];modal={kind:'category',id:state.categories.find(c=>c.name==='Pets').id};submitCategory({target:{name:'Animais',type:'expense',color:'#358268'}})");assert.equal(run('state.entries[0].category'),'Animais');run("handleExperienceAction('category-archive',{dataset:{id:state.categories.find(c=>c.name==='Animais').id}})");assert.equal(run("state.categories.find(c=>c.name==='Animais').archived"),true);assert.ok(!run("categoryField('Outros','expense')").includes('Animais'));assert.ok(run("categoryField('Animais','expense',false,true)").includes('Animais'));assert.ok(run('Finance.valid(state)'))});
-test('Filtros de lançamentos combinam categoria, tipo, perfil e situação',()=>{const {run,get}=context();run(`state=upgradeState(${JSON.stringify(sharedState([sharedItem({name:'Condomínio',category:'Casa'})]))});month='2026-10';state.entries=[{id:'other',name:'Farmácia',type:'expense',value:5000,date:month+'-01',category:'Saúde',recurring:false,end:''}];view='transactions';ledgerCategory='Casa';ledgerProfile='ana';render()`);assert.ok(get('#main').innerHTML.includes('Condomínio'));assert.ok(!get('#main').innerHTML.includes('Farmácia'));run("ledgerFrequency='once';render()");assert.ok(!get('#main').innerHTML.includes('shared-paid'))});
-test('Cópia de despesa dividida mantém perfis e não duplica no segundo clique',()=>{const {run}=context();run(`state=upgradeState(${JSON.stringify(sharedState([sharedItem({recurring:false})]))});state.paid['shared:rent:ana@2026-10']=true;copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-10','2026-11',{entries:true},uid)`);assert.equal(run('state.shared.items.length'),2);assert.equal(run('state.entries.length'),0);assert.equal(run("Finance.totals(state,'2026-11').expense"),100001);assert.equal(run("Finance.totals(state,'2026-11').paid"),0);assert.ok(run('Finance.valid(state)'))});
-test('Troca de conta limpa filtros, buscas e formulários da interface',()=>{const {run,get}=context();run("query='Consulta privada';categoryQuery='Categoria privada';ledgerProfile='ana';ledgerCategory='Saúde';sharedFilter='ana';view='transactions';modal={kind:'entry'}");get('#fields').innerHTML='<input value="informação privada">';get('#main').innerHTML='dados financeiros';run('resetWorkspaceContext()');assert.equal(run('query'),'');assert.equal(run('categoryQuery'),'');assert.equal(run('ledgerProfile'),'all');assert.equal(run('view'),'shared');assert.equal(get('#fields').innerHTML,'');assert.equal(get('#main').innerHTML,'');assert.equal(run('modal'),null)});
-test('Curva confirmada fecha no mesmo caixa do painel sem somar previsão pendente',()=>{const {run}=context();run("month='2026-10';state.entries=[{id:'income',name:'Renda',type:'income',value:100000,date:'2026-10-03',category:'Receitas',recurring:false,end:''},{id:'expense',name:'Conta',type:'expense',value:10000,date:'2026-10-10',category:'Outros',recurring:false,end:''}];state.paid['income@2026-10']=true;state.monthSettings['2026-10']={opening:5000}");assert.equal(run('confirmedFlow().length'),31);assert.equal(run('confirmedFlow()[0].value'),5000);assert.equal(run('confirmedFlow()[2].value'),105000);assert.equal(run('confirmedFlow().at(-1).value'),run('Finance.availableAfterSaving(state,month)'))});
-test('Recomeçar os registros preserva a aparência escolhida sem carregar dados financeiros',()=>{const {run}=context();run("state.budget=12345;state.appearance={...AppearanceModel.defaults,style:'editorial',density:'compact'};state=freshRecords()");assert.equal(run('state.budget'),0);assert.equal(run('state.appearance.style'),'editorial');assert.equal(run('state.appearance.density'),'compact');assert.ok(run('Finance.valid(state)'))});
-test('Atualização de versão preserva backup anterior completo ao personalizar e salvar',()=>{
-  const previous={...structuredClone(s),debts:[debt],funds:[fund],transfers:[{id:'legacy-transfer',fundId:fund.id,date:'2026-10-10',kind:'deposit',value:15000}],wealth:{monthly:10000,essential:150000,months:6},monthSettings:{'2026-10':{opening:12345,budget:200000,note:'Planejamento anterior'}},overrides:{'rent@2026-11':{value:110000,day:15}},shared:sharedState([sharedItem()]).shared};
-  previous.categories=CategoryCatalog.migrate(previous);
-  assert.ok(F.valid(previous));
-  const {run,c}=context();c.previous=structuredClone(previous);
-  run("state=upgradeState(previous);month='2026-10';for(const next of ['shared','transactions','categories','forecast','goals','wealth','appearance','settings']){view=next;render()}state.appearance={...AppearanceModel.defaults,style:'editorial'};save()");
-  const saved=JSON.parse(run('localStorage.getItem(KEY)'));
-  for(const key of Object.keys(previous))assert.deepEqual(saved[key],previous[key],`Campo anterior preservado: ${key}`);
-  assert.ok(F.valid(saved));
-  for(const period of ['2026-10','2026-11','2027-02'])assert.deepEqual(F.totals(saved,period),F.totals(previous,period));
-  assert.equal(saved.appearance.style,'editorial');
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+require("./appearance-model.js");
+require("./catalog.js");
+require("./security.js");
+require("./shared-engine.js");
+require("./engine.js");
+const F = globalThis.Finance;
+let checks = 0;
+function test(name, fn) {
+  fn();
+  checks++;
+  console.log("OK " + name);
+}
+const blank = () => ({
+  version: 1,
+  entries: [],
+  shifts: [],
+  shiftPaid: [],
+  holidays: [],
+  paid: {},
+  goals: [],
+  budget: 0,
+});
+test("Plantões: útil 50, sábado/domingo 100 e feriado útil 100", () => {
+  assert.equal(F.rate("2026-10-23", []), 5000);
+  assert.equal(F.rate("2026-10-24", []), 10000);
+  assert.equal(F.rate("2026-10-25", []), 10000);
+  assert.equal(F.rate("2026-10-23", ["2026-10-23"]), 10000);
+});
+test("Feriado no fim de semana não dobra a tarifa", () => assert.equal(F.rate("2026-10-24", ["2026-10-24"]), 10000));
+test("Calendário: virada do ano e fevereiro bissexto", () => {
+  assert.equal(F.shiftMonth("2026-12", 1), "2027-01");
+  assert.equal(F.shiftMonth("2026-01", -1), "2025-12");
+  assert.equal(F.dateFor("2028-02", 31), "2028-02-29");
+  assert.equal(F.dateFor("2027-02", 31), "2027-02-28");
+});
+const s = blank();
+s.entries = [
+  {
+    id: "salary",
+    name: "Salário",
+    type: "income",
+    value: 300000,
+    date: "2026-10-05",
+    recurring: true,
+    end: "",
+    category: "Receitas",
+  },
+  {
+    id: "rent",
+    name: "Aluguel",
+    type: "expense",
+    value: 100000,
+    date: "2026-10-31",
+    recurring: true,
+    end: "2027-02",
+    category: "Moradia",
+  },
+  {
+    id: "market",
+    name: "Mercado",
+    type: "expense",
+    value: 50000,
+    date: "2026-10-15",
+    recurring: false,
+    end: "",
+    category: "Alimentação",
+  },
+];
+s.shifts = ["2026-10-23", "2026-10-24"];
+s.shiftPaid = ["2026-10-23"];
+s.paid = { "salary@2026-10": true, "rent@2026-10": true };
+test("Saldo previsto inclui plantões, disponível considera confirmações", () => {
+  const t = F.totals(s, "2026-10");
+  assert.equal(t.income, 315000);
+  assert.equal(t.expense, 150000);
+  assert.equal(t.balance, 165000);
+  assert.equal(t.available, 205000);
+  assert.equal(t.shiftTotal, 15000);
+});
+test("Recorrência respeita início, fim e vencimento no dia 31", () => {
+  assert.equal(F.entries(s, "2026-09").length, 0);
+  assert.equal(F.entries(s, "2027-02").find((e) => e.id === "rent").date, "2027-02-28");
+  assert.equal(F.entries(s, "2027-03").length, 1);
+});
+test("Confirmação não se repete no próximo mês", () => assert.equal(F.totals(s, "2026-11").received, 0));
+test("Previsão não repete gasto avulso nem escala", () => {
+  const t = F.forecast(s, "2026-10");
+  assert.equal(t.income, 300000);
+  assert.equal(t.expense, 100000);
+  assert.equal(t.shiftTotal, 0);
+  assert.equal(t.closing, 365000);
+});
+test("Valores monetários usam centavos", () => {
+  assert.equal(F.cents("149.90"), 14990);
+  assert.equal(F.cents(0.1) + F.cents(0.2), 30);
+});
+test("Backup aceita dados válidos e rejeita dados corrompidos", () => {
+  assert.ok(F.valid(s));
+  assert.ok(!F.valid({ ...s, version: 2 }));
+  assert.ok(!F.valid({ ...s, shifts: ["2026-02-31"] }));
+  assert.ok(!F.valid({ ...s, entries: [{ ...s.entries[0], value: -1 }] }));
+  assert.ok(!F.valid({ ...s, shiftPaid: ["2026-12-25"] }));
+  assert.ok(!F.valid({ ...s, shifts: ["2026-10-23", "2026-10-23"] }));
+});
+function context() {
+  const nodes = new Map();
+  const get = (key) => {
+    if (!nodes.has(key))
+      nodes.set(key, {
+        value: "",
+        textContent: "",
+        innerHTML: "",
+        style: {},
+        files: [],
+        dataset: {},
+        setAttribute() {},
+        classList: { toggle() {}, add() {}, remove() {} },
+        listeners: {},
+        addEventListener(name, fn) {
+          this.listeners[name] = fn;
+        },
+        showModal() {},
+        close() {},
+        focus() {},
+        setSelectionRange() {},
+      });
+    return nodes.get(key);
+  };
+  const store = new Map(),
+    document = {
+      listeners: {},
+      body: { classList: { toggle() {} }, dataset: {} },
+      querySelectorAll: () => [],
+      querySelector: get,
+      addEventListener(name, fn) {
+        this.listeners[name] = fn;
+      },
+      createElement() {
+        return { click() {} };
+      },
+    };
+  const c = {
+    document,
+    localStorage: { getItem: (k) => store.get(k) || null, setItem: (k, v) => store.set(k, v) },
+    crypto: { randomUUID: () => Math.random().toString(36).slice(2) },
+    console,
+    Date,
+    Intl,
+    JSON,
+    Number,
+    String,
+    Object,
+    Array,
+    Math,
+    RegExp,
+    Set,
+    FormData: class {
+      constructor(values) {
+        this.values = values || {};
+      }
+      get(k) {
+        return this.values[k] ?? null;
+      }
+      has(k) {
+        return k in this.values;
+      }
+    },
+    Blob,
+    URL,
+    setTimeout: () => 0,
+    clearTimeout() {},
+    confirm: () => true,
+  };
+  c.window = c;
+  vm.createContext(c);
+  vm.runInContext(fs.readFileSync(__dirname + "/appearance-model.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/catalog.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/security.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/shared-engine.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/engine.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/icons.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/ui.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/growth.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/monthly.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/shared.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/experience.js", "utf8"), c);
+  vm.runInContext(
+    'const Appearance={get:()=>({...AppearanceModel.defaults}),sync(){},detach(){},panel:()=>"<p>Preferências visuais</p>"}',
+    c,
+  );
+  vm.runInContext(fs.readFileSync(__dirname + "/home.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/app.js", "utf8"), c);
+  return { c, get, document, run: (code) => vm.runInContext(code, c) };
+}
+test("Interface: oito páginas renderizam vazias e com demonstração", () => {
+  const { run, get, document } = context();
+  for (const v of ["shared", "transactions", "categories", "forecast", "goals", "wealth", "appearance", "settings"]) {
+    run(`view='${v}';render()`);
+    assert.ok(get("#main").innerHTML.length > 100);
+  }
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "demo" } }) } });
+  for (const v of ["shared", "transactions", "categories", "forecast", "goals", "wealth", "appearance", "settings"]) {
+    run(`view='${v}';render()`);
+    assert.ok(get("#main").innerHTML.length > 100);
+  }
+  assert.ok(run("Finance.valid(state)"));
+  assert.equal(run("state.entries.length"), 6);
+});
+test("Interface: seleção de plantão, feriado e recebimento", () => {
+  const { run, document } = context();
+  run("var Account={canUseShifts:true,saveState:()=>true}");
+  const click = (action, date) =>
+    document.listeners.click({ target: { closest: () => ({ dataset: { action, date } }) } });
+  click("day", "2026-10-23");
+  assert.equal(run("state.shifts.length"), 1);
+  click("shift-paid", "2026-10-23");
+  assert.equal(run("state.shiftPaid.length"), 1);
+  run("holidayMode=true");
+  click("day", "2026-10-23");
+  assert.equal(run("Finance.rate('2026-10-23',state.holidays)"), 10000);
+  run("holidayMode=false");
+  click("day", "2026-10-23");
+  assert.equal(run("state.shiftPaid.length"), 0);
+  assert.equal(run("state.shifts.length"), 0);
+});
+test("Interface: texto de usuário é escapado no HTML", () => {
+  const { run, get } = context();
+  run("state.goals=[{id:'g',name:'<script>alert(1)</script>',target:10000,saved:100}];view='goals';render()");
+  assert.ok(!get("#main").innerHTML.includes("<script>"));
+  assert.ok(get("#main").innerHTML.includes("&lt;script&gt;"));
+});
+const debt = {
+  id: "d1",
+  name: "Geladeira",
+  creditor: "Loja",
+  start: "2026-10-01",
+  firstDue: "2026-10-31",
+  total: 10000,
+  principal: 9000,
+  count: 3,
+};
+test("Parcelamento distribui centavos sem alterar o total", () => {
+  const x = { ...blank(), debts: [debt] };
+  const list = F.debtSchedule(x, debt);
+  assert.deepEqual(
+    list.map((e) => e.value),
+    [3334, 3333, 3333],
+  );
+  assert.equal(
+    list.reduce((a, e) => a + e.value, 0),
+    10000,
+  );
+  assert.equal(list[1].date, "2026-11-30");
+  assert.equal(list[2].date, "2026-12-31");
+});
+test("Parcelas entram apenas uma vez nos meses corretos", () => {
+  const x = { ...blank(), debts: [debt] };
+  assert.equal(F.totals(x, "2026-09").expense, 0);
+  assert.equal(F.totals(x, "2026-10").expense, 3334);
+  assert.equal(F.totals(x, "2026-11").expense, 3333);
+  assert.equal(F.totals(x, "2027-01").expense, 0);
+});
+test("Dívida calcula atraso, pagamento, saldo restante e fim", () => {
+  const x = { ...blank(), debts: [debt] };
+  x.paid["debt:d1:0@2026-10"] = true;
+  const t = F.debtSummary(x, debt, "2026-12-01");
+  assert.equal(t.paidCount, 1);
+  assert.equal(t.remaining, 6666);
+  assert.equal(t.overdue.length, 1);
+  assert.equal(t.last, "2026-12-31");
+  assert.equal(t.cost, 1000);
+});
+test("Projeção inclui a próxima parcela e termina após quitação", () => {
+  const x = { ...blank(), debts: [debt] };
+  assert.equal(F.forecast(x, "2026-10").expense, 3333);
+  assert.equal(F.forecast(x, "2026-12").expense, 0);
+});
+test("Backup antigo continua válido e novos campos são validados", () => {
+  assert.ok(F.valid(blank()));
+  assert.ok(F.valid({ ...blank(), debts: [debt] }));
+  assert.ok(!F.valid({ ...blank(), debts: [{ ...debt, count: 0 }] }));
+  assert.ok(!F.valid({ ...blank(), debts: [{ ...debt, firstDue: "2026-09-01" }] }));
+  assert.ok(!F.valid({ ...blank(), debts: [{ ...debt, total: 1 }] }));
+});
+const fund = {
+  id: "f1",
+  name: "Reserva",
+  kind: "reserve",
+  product: "Conta",
+  balance: 10000,
+  liquidity: "daily",
+  risk: "low",
+};
+test("Aportes e resgates movimentam caixa sem duplicar despesas", () => {
+  const x = {
+    ...blank(),
+    funds: [fund],
+    transfers: [
+      { id: "t1", fundId: "f1", date: "2026-10-10", kind: "deposit", value: 5000 },
+      { id: "t2", fundId: "f1", date: "2026-10-11", kind: "withdraw", value: 2000 },
+    ],
+  };
+  x.entries = [{ ...s.entries[0], value: 20000 }];
+  x.paid = { "salary@2026-10": true };
+  assert.equal(F.fundBalance(x, fund), 13000);
+  assert.equal(F.savingFlow(x, "2026-10"), 3000);
+  assert.equal(F.totals(x, "2026-10").expense, 0);
+  assert.equal(F.availableAfterSaving(x, "2026-10"), 17000);
+  assert.ok(F.valid(x));
+});
+test("Conciliação aceita perdas sem criar um resgate fictício", () => {
+  const f = { ...fund, balance: 0, adjustment: -2000 },
+    x = {
+      ...blank(),
+      funds: [f],
+      transfers: [{ id: "t", fundId: "f1", date: "2026-10-10", kind: "deposit", value: 10000 }],
+    };
+  assert.equal(F.fundBalance(x, f), 8000);
+  assert.equal(F.savingFlow(x, "2026-10"), 10000);
+  assert.ok(F.valid(x));
+  assert.ok(!F.valid({ ...x, funds: [{ ...f, adjustment: -20000 }] }));
+});
+test("Conselhos detectam atraso e déficit com explicação dos valores", () => {
+  const x = { ...blank(), debts: [debt] };
+  const cards = F.advice(x, "2026-10", "2026-12-01");
+  assert.ok(cards.some((c) => c.title.includes("atrasadas")));
+  assert.ok(cards.some((c) => c.title.includes("pausa")));
+  assert.ok(cards.every((c) => c.text.length > 30));
+});
+test("Novas telas e formulários renderizam sem dados e com registros", () => {
+  const { run, get } = context();
+  for (const v of ["transactions", "wealth", "categories"]) {
+    run(`view='${v}';render()`);
+    assert.ok(get("#main").innerHTML.length > 300);
+  }
+  run(`state.debts=[${JSON.stringify(debt)}];state.funds=[${JSON.stringify(fund)}];selectedDebt='d1'`);
+  for (const v of ["transactions", "wealth", "categories"]) {
+    run(`view='${v}';render()`);
+    assert.ok(get("#main").innerHTML.length > 300);
+  }
+  for (const code of [
+    "openDebt('d1')",
+    "openDebt()",
+    "openFund('f1')",
+    "openFund()",
+    "openTransfer('f1','deposit')",
+    "openWealthPlan()",
+  ]) {
+    run(code);
+    assert.ok(get("#fields").innerHTML.includes("input"));
+  }
+});
+test("Formulário cadastra dívida e confirma parcelas já pagas", () => {
+  const { run } = context();
+  run(
+    "modal={kind:'debt'};$('#form').listeners.submit({preventDefault(){},target:{name:'Notebook',creditor:'Loja',start:'2026-01-01',firstDue:'2026-01-31',total:'1200',count:'12',principal:'1000',paidCount:'3'}})",
+  );
+  assert.equal(run("state.debts.length"), 1);
+  assert.equal(run("Finance.debtSummary(state,state.debts[0],today()).paidCount"), 3);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Formulários criam reserva, registram aporte e impedem resgate maior", () => {
+  const { run, get } = context();
+  run(
+    "modal={kind:'fund'};$('#form').listeners.submit({preventDefault(){},target:{name:'Reserva',kind:'reserve',product:'Conta',balance:'100',liquidity:'daily',risk:'low'}})",
+  );
+  assert.equal(run("state.funds.length"), 1);
+  run(
+    "modal={kind:'transfer',id:state.funds[0].id,transferKind:'deposit'};$('#form').listeners.submit({preventDefault(){},target:{value:'50',date:today()}})",
+  );
+  assert.equal(run("Finance.fundBalance(state,state.funds[0])"), 15000);
+  run(
+    "modal={kind:'transfer',id:state.funds[0].id,transferKind:'withdraw'};$('#form').listeners.submit({preventDefault(){},target:{value:'200',date:today()}})",
+  );
+  assert.equal(run("state.transfers.length"), 1);
+  assert.ok(get("#form-error").textContent.includes("maior"));
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Visão geral suporta aporte exatamente igual à receita", () => {
+  const { run, get } = context();
+  run(
+    `state.entries=[${JSON.stringify({ ...s.entries[0], date: "2026-10-01", value: 10000 })}];state.funds=[${JSON.stringify({ ...fund, balance: 0 })}];state.transfers=[{id:'t',fundId:'f1',date:'2026-10-10',kind:'deposit',value:10000}];month='2026-10';view='overview';render()`,
+  );
+  assert.equal(run("Finance.availableAfterSaving(state,'2026-10')"), -10000);
+  assert.ok(get("#main").innerHTML.includes("Disponível agora"));
+});
+test("Acumulado da previsão desconta aportes líquidos sem virar despesa", () => {
+  const x = {
+    ...blank(),
+    funds: [fund],
+    transfers: [{ id: "t", fundId: "f1", date: "2026-10-10", kind: "deposit", value: 10000 }],
+    entries: [{ ...s.entries[0], value: 100000 }],
+  };
+  const next = F.forecast(x, "2026-10");
+  assert.equal(next.closing, 190000);
+  assert.equal(next.expense, 0);
+});
+test("Conciliação de perda mantém histórico e não cria saída fictícia", () => {
+  const { run } = context();
+  run(
+    `state.funds=[${JSON.stringify({ ...fund, balance: 0 })}];state.transfers=[{id:'t',fundId:'f1',date:today(),kind:'deposit',value:10000}];modal={kind:'fund-adjust',id:'f1'};$('#form').listeners.submit({preventDefault(){},target:{balance:'80'}})`,
+  );
+  assert.equal(run("Finance.fundBalance(state,state.funds[0])"), 8000);
+  assert.equal(run("state.transfers.length"), 1);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Ajuste pontual altera apenas o mês escolhido", () => {
+  const x = {
+    ...blank(),
+    entries: [s.entries[1]],
+    overrides: { "rent@2026-11": { value: 140000, day: 12, name: "Aluguel ajustado" } },
+  };
+  assert.equal(F.totals(x, "2026-10").expense, 100000);
+  assert.equal(F.totals(x, "2026-11").expense, 140000);
+  assert.equal(F.entries(x, "2026-11")[0].date, "2026-11-12");
+  assert.equal(F.totals(x, "2026-12").expense, 100000);
+  assert.ok(F.valid(x));
+});
+test("Mudança futura preserva histórico e respeita a próxima revisão", () => {
+  const e = {
+      ...s.entries[1],
+      end: "",
+      revisions: [
+        { from: "2026-11", value: 120000, day: 31 },
+        { from: "2027-01", value: 130000, day: 31 },
+      ],
+    },
+    x = { ...blank(), entries: [e] };
+  assert.equal(F.totals(x, "2026-10").expense, 100000);
+  assert.equal(F.totals(x, "2026-12").expense, 120000);
+  assert.equal(F.totals(x, "2027-02").expense, 130000);
+  assert.equal(F.entries(x, "2027-02")[0].date, "2027-02-28");
+});
+test("Ocultar uma recorrência não remove os outros meses", () => {
+  const x = { ...blank(), entries: [s.entries[1]], overrides: { "rent@2026-11": { skipped: true } } };
+  assert.equal(F.entries(x, "2026-11").length, 0);
+  assert.equal(F.entries(x, "2026-12").length, 1);
+  assert.equal(F.entries(x, "2026-10").length, 1);
+});
+test("Limite e saldo inicial são independentes por mês", () => {
+  const x = {
+    ...blank(),
+    budget: 10000,
+    monthSettings: { "2026-11": { opening: 50000, budget: 25000, note: "Ajuste" } },
+  };
+  assert.equal(F.budgetFor(x, "2026-10"), 10000);
+  assert.equal(F.budgetFor(x, "2026-11"), 25000);
+  assert.equal(F.totals(x, "2026-11").available, 50000);
+  assert.equal(F.totals(x, "2026-12").available, 0);
+  assert.ok(F.valid(x));
+});
+test("Projeção atravessa dezembro e respeita saldo manual no destino", () => {
+  const x = {
+    ...blank(),
+    entries: [{ ...s.entries[0], value: 10000 }],
+    monthSettings: { "2026-12": { opening: 5000 }, "2027-02": { opening: 1000 } },
+  };
+  const list = F.timeline(x, "2026-12", 4);
+  assert.deepEqual(
+    list.map((t) => t.month),
+    ["2026-12", "2027-01", "2027-02", "2027-03"],
+  );
+  assert.deepEqual(
+    list.map((t) => t.projectedClosing),
+    [15000, 25000, 11000, 21000],
+  );
+  assert.equal(F.forecast(x, "2027-01").closing, 11000);
+});
+test("Validação de backup rejeita ajustes e meses inválidos", () => {
+  assert.ok(!F.valid({ ...blank(), monthSettings: { "2026-13": { budget: 2 } } }));
+  assert.ok(!F.valid({ ...blank(), overrides: { "inexistente@2026-11": { value: 200 } } }));
+  assert.ok(
+    !F.valid({ ...blank(), entries: [s.entries[1]], overrides: { "rent@2026-11": { id: "outro", value: 200 } } }),
+  );
+  assert.ok(!F.valid({ ...blank(), entries: [s.entries[1]], overrides: { "rent@2026-11": { day: 32 } } }));
+});
+test("Editor recorrente salva só no mês padrão e preserva pagamento anterior", () => {
+  const { run, get } = context();
+  run(
+    `state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';state.paid['rent@2026-10']=true;openMonthlyEntry('rent');$('#form').listeners.submit({preventDefault(){},target:{scope:'month',name:'Aluguel',category:'Moradia',value:'1250',day:'15',done:'on'}})`,
+  );
+  assert.equal(run("Finance.totals(state,'2026-11').expense"), 125000);
+  assert.equal(run("Finance.totals(state,'2026-10').expense"), 100000);
+  assert.equal(run("Finance.totals(state,'2026-12').expense"), 100000);
+  assert.equal(run("state.paid['rent@2026-10']"), true);
+  assert.equal(run("Finance.entries(state,'2026-11')[0].done"), true);
+});
+test("Editor aplica mudança futura sem reescrever meses anteriores", () => {
+  const { run } = context();
+  run(
+    `state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';modal={kind:'monthly-entry',id:'rent',month};$('#form').listeners.submit({preventDefault(){},target:{scope:'future',name:'Aluguel',category:'Moradia',value:'1500',day:'31'}})`,
+  );
+  assert.equal(run("Finance.totals(state,'2026-10').expense"), 100000);
+  assert.equal(run("Finance.totals(state,'2026-12').expense"), 150000);
+  assert.equal(run("Finance.entries(state,'2027-02')[0].date"), "2027-02-28");
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Ajustar mês aceita saldo zero explícito e mantém o mês vizinho", () => {
+  const { run } = context();
+  run(
+    "month='2026-11';openMonthSettings();$('#form').listeners.submit({preventDefault(){},target:{opening:'0',budget:'1800',note:'Viagem'}})",
+  );
+  assert.equal(run("Finance.monthConfig(state,'2026-11').opening"), 0);
+  assert.equal(run("Finance.budgetFor(state,'2026-11')"), 180000);
+  assert.equal(run("Finance.budgetFor(state,'2026-12')"), 0);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Cópia não duplica avulsos nem copia recorrência, parcela ou pagamentos", () => {
+  const { run } = context();
+  run(
+    `state.entries=${JSON.stringify(s.entries)};state.debts=[${JSON.stringify(debt)}];state.paid['market@2026-10']=true;copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-10','2026-11',{entries:true},uid)`,
+  );
+  assert.equal(run("state.entries.filter(e=>!e.recurring&&e.date.startsWith('2026-11')).length"), 1);
+  assert.equal(run("Finance.entries(state,'2026-11').find(e=>e.name==='Mercado').done"), false);
+  assert.equal(run("state.debts.length"), 1);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Cópia de escala ignora dias inexistentes e não leva confirmações", () => {
+  const { run } = context();
+  run(
+    "state.shifts=['2026-01-28','2026-01-30','2026-01-31'];state.shiftPaid=['2026-01-28'];copyMonthData(state,'2026-01','2026-02',{shifts:true},uid);copyMonthData(state,'2026-01','2026-02',{shifts:true},uid)",
+  );
+  assert.equal(run("state.shifts.filter(d=>d.startsWith('2026-02')).length"), 1);
+  assert.equal(run("state.shiftPaid.includes('2026-02-28')"), false);
+});
+test("Visão anual renderiza 12 meses e navegação preserva dados", () => {
+  const { run, get } = context();
+  run("month='2026-12';view='forecast';render()");
+  assert.equal((get("#main").innerHTML.match(/class="year-card /g) || []).length, 12);
+  run("setMonth('2027-01')");
+  assert.equal(run("month"), "2027-01");
+  run("setMonth('2027-13')");
+  assert.equal(run("month"), "2027-01");
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Cópia encadeada preserva origem e evita nova duplicação", () => {
+  const { run } = context();
+  run(
+    `state.entries=[${JSON.stringify(s.entries[2])}];copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-11','2026-12',{entries:true},uid);copyMonthData(state,'2026-10','2026-12',{entries:true},uid)`,
+  );
+  assert.equal(run("state.entries.filter(e=>e.date.startsWith('2026-12')).length"), 1);
+});
+test("Editor em fevereiro preserva dia 31 original para mudanças futuras", () => {
+  const { run, get } = context();
+  run(`state.entries=[${JSON.stringify({ ...s.entries[1], end: "" })}];month='2027-02';openMonthlyEntry('rent')`);
+  assert.ok(get("#fields").innerHTML.includes('name="day" type="number" value="31"'));
+});
+test("Aviso de orçamento usa o limite específico e respeita limite zero", () => {
+  const x = {
+    ...blank(),
+    entries: [s.entries[1]],
+    budget: 200000,
+    monthSettings: { "2026-11": { budget: 50000 }, "2026-12": { budget: 0 } },
+  };
+  assert.ok(F.advice(x, "2026-11", "2026-10-01").some((c) => c.title.includes("ultrapassado")));
+  assert.ok(!F.advice(x, "2026-12", "2026-10-01").some((c) => c.title.includes("ultrapassado")));
+});
+test("Ocultar e restaurar uma conta mantém as confirmações dos outros meses", () => {
+  const { run } = context();
+  run(
+    `state.entries=[${JSON.stringify(s.entries[1])}];month='2026-11';state.paid['rent@2026-10']=true;modal={kind:'remove-recurring',id:'rent',month};$('#form').listeners.submit({preventDefault(){},target:{scope:'month'}})`,
+  );
+  assert.equal(run("Finance.entries(state,'2026-11').length"), 0);
+  run("handleMonthAction('restore-month-entry',{dataset:{id:'rent'}})");
+  assert.equal(run("Finance.entries(state,'2026-11').length"), 1);
+  assert.equal(run("state.paid['rent@2026-10']"), true);
+  assert.ok(run("Finance.valid(state)"));
+});
+const sharedProfiles = [
+  { id: "ana", name: "Ana", kind: "person", color: "#9eafff" },
+  { id: "bruno", name: "Bruno", kind: "person", color: "#75d9b1" },
+  { id: "extra", name: "Diversos", kind: "pocket", color: "#e9b76c" },
+];
+const sharedItem = (patch = {}) => ({
+  id: "rent",
+  name: "Aluguel",
+  type: "expense",
+  value: 100001,
+  date: "2026-10-31",
+  recurring: true,
+  end: "",
+  category: "Casa",
+  mode: "equal",
+  members: ["ana", "bruno"],
+  weights: {},
+  ...patch,
+});
+const sharedState = (items) => ({ ...blank(), shared: { profiles: structuredClone(sharedProfiles), items } });
+test("Compartilhado: divide centavos sem perder ou duplicar dinheiro", () => {
+  const x = sharedState([sharedItem()]);
+  assert.ok(F.valid(x));
+  assert.deepEqual(
+    SharedFinance.entries(x, "2026-10").map((e) => e.value),
+    [50001, 50000],
+  );
+  assert.equal(F.totals(x, "2026-10").expense, 100001);
+  for (let value = 1; value < 300; value++)
+    assert.equal(
+      SharedFinance.allocate(value, [1, 2, 3]).reduce((a, b) => a + b, 0),
+      value,
+    );
+});
+test("Compartilhado: proporcional usa receitas do mês de cada participante", () => {
+  const x = sharedState([
+    sharedItem({ id: "salary-a", type: "income", value: 300000, mode: "personal", owner: "ana" }),
+    sharedItem({ id: "salary-b", type: "income", value: 100000, mode: "personal", owner: "bruno" }),
+    sharedItem({ mode: "income", value: 120000 }),
+  ]);
+  assert.deepEqual(
+    SharedFinance.shares(x, x.shared.items[2], "2026-10").map((p) => p.value),
+    [90000, 30000],
+  );
+  const people = SharedFinance.summary(x, "2026-10");
+  assert.equal(people[0].balance, 210000);
+  assert.equal(people[1].balance, 70000);
+  assert.equal(F.totals(x, "2026-10").income, 400000);
+  assert.equal(F.totals(x, "2026-10").expense, 120000);
+});
+test("Compartilhado: sem renda mantém conta nos totais com divisão provisória", () => {
+  const x = sharedState([sharedItem({ mode: "income" })]);
+  assert.equal(F.totals(x, "2026-10").expense, 100001);
+  assert.deepEqual(
+    SharedFinance.shares(x, x.shared.items[0], "2026-10").map((p) => p.value),
+    [50001, 50000],
+  );
+});
+test("Compartilhado: percentual e valor exato fecham a conta", () => {
+  const percent = sharedItem({ mode: "percent", weights: { ana: 6000, bruno: 4000 } }),
+    amount = sharedItem({ id: "market", mode: "amount", weights: { ana: 40001, bruno: 60000 } }),
+    x = sharedState([percent, amount]);
+  assert.ok(F.valid(x));
+  assert.deepEqual(
+    SharedFinance.shares(x, percent, "2026-10").map((p) => p.value),
+    [60001, 40000],
+  );
+  assert.deepEqual(
+    SharedFinance.shares(x, amount, "2026-10").map((p) => p.value),
+    [40001, 60000],
+  );
+  assert.ok(!F.valid(sharedState([{ ...percent, weights: { ana: 6000, bruno: 3000 } }])));
+  assert.ok(!F.valid(sharedState([{ ...amount, weights: { ana: 40000, bruno: 60000 } }])));
+});
+test("Compartilhado: confirmação é individual e não passa ao próximo mês", () => {
+  const x = sharedState([sharedItem()]);
+  x.paid["shared:rent:ana@2026-10"] = true;
+  assert.equal(F.totals(x, "2026-10").paid, 50001);
+  assert.equal(SharedFinance.summary(x, "2026-10")[1].pending, 50000);
+  assert.equal(F.totals(x, "2026-11").paid, 0);
+  assert.equal(F.entries(x, "2027-02")[0].date, "2027-02-28");
+});
+test("Compartilhado: avulsos, carteiras e encerramento respeitam os meses", () => {
+  const x = sharedState([
+    sharedItem({ end: "2026-11" }),
+    sharedItem({ id: "extra-cost", mode: "personal", owner: "extra", recurring: false, value: 2000 }),
+  ]);
+  assert.equal(F.totals(x, "2026-10").expense, 102001);
+  assert.equal(F.totals(x, "2026-11").expense, 100001);
+  assert.equal(F.totals(x, "2026-12").expense, 0);
+  assert.equal(SharedFinance.summary(x, "2026-10")[2].expense, 2000);
+});
+test("Compartilhado: backup rejeita perfis duplicados, referências e formatos inválidos", () => {
+  const x = sharedState([sharedItem()]);
+  assert.ok(F.valid(JSON.parse(JSON.stringify(x))));
+  assert.ok(!F.valid({ ...x, shared: { ...x.shared, profiles: [...sharedProfiles, sharedProfiles[0]] } }));
+  assert.ok(!F.valid(sharedState([sharedItem({ members: ["nao-existe"] })])));
+  assert.ok(!F.valid(sharedState([sharedItem({ id: "<script>" })])));
+  assert.ok(!F.valid(sharedState([sharedItem({ mode: "income", members: ["extra"] })])));
+  assert.ok(!F.valid(sharedState([sharedItem({ end: "2026-09" })])));
+});
+test("Compartilhado: páginas escapam nomes e resumo geral mostra partes", () => {
+  const { run, get } = context();
+  run(
+    `state=${JSON.stringify(sharedState([sharedItem()]))};month='2026-10';state.shared.profiles[0].name='<img src=x>';view='shared';render()`,
+  );
+  assert.ok(get("#main").innerHTML.includes("Pessoas e carteiras"));
+  assert.ok(get("#main").innerHTML.includes("&lt;img src=x&gt;"));
+  assert.ok(!get("#main").innerHTML.includes("<img src=x>"));
+  run("view='transactions';render()");
+  assert.ok(get("#main").innerHTML.includes("shared-edit"));
+  run("view='overview';render()");
+  assert.ok(get("#main").innerHTML.includes("Pessoas e carteiras"));
+});
+test("Compartilhado: cadastro e edição de perfil preservam dados anteriores", () => {
+  const { run } = context();
+  run("modal={kind:'shared-profile'};submitShared({target:{name:'Ana',kind:'person',color:'#9eafff'}})");
+  assert.equal(run("state.shared.profiles.length"), 1);
+  assert.ok(run("Finance.valid(state)"));
+  run(
+    "modal={kind:'shared-profile',id:state.shared.profiles[0].id};submitShared({target:{name:'Ana Silva',kind:'person',color:'#75d9b1'}})",
+  );
+  assert.equal(run("state.shared.profiles[0].name"), "Ana Silva");
+});
+test("Compartilhado: formulário exige percentuais e valores corretos", () => {
+  const { run, get } = context();
+  run(
+    `state=${JSON.stringify(sharedState([]))};month='2026-10';modal={kind:'shared-item'};submitShared({target:{name:'Casa',type:'expense',value:'1000',date:'2026-10-05',category:'Casa',mode:'percent','member-ana':'on','member-bruno':'on','weight-ana':'60','weight-bruno':'30'}})`,
+  );
+  assert.equal(run("state.shared.items.length"), 0);
+  assert.ok(get("#form-error").textContent.includes("100%"));
+  run(
+    "submitShared({target:{name:'Casa',type:'expense',value:'1000',date:'2026-10-05',category:'Casa',mode:'percent','member-ana':'on','member-bruno':'on','weight-ana':'60','weight-bruno':'40'}})",
+  );
+  assert.equal(run("state.shared.items.length"), 1);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Compartilhado: bloqueia excluir perfil com contas e paga apenas uma parte", () => {
+  const { run } = context();
+  run(
+    `state=${JSON.stringify(sharedState([sharedItem()]))};month='2026-10';handleSharedAction('shared-profile-delete',{dataset:{id:'ana'}})`,
+  );
+  assert.equal(run("state.shared.profiles.length"), 3);
+  run("handleSharedAction('shared-paid',{dataset:{id:'shared:rent:ana'}})");
+  assert.equal(run("Finance.totals(state,'2026-10').paid"), 50001);
+  run("handleSharedAction('shared-delete',{dataset:{id:'rent'}})");
+  assert.equal(run("modal.kind"), "shared-remove");
+  run("$('#form').listeners.submit({preventDefault(){},target:{scope:'all'}})");
+  assert.equal(run("state.shared.items.length"), 0);
+  assert.equal(run("Object.keys(state.paid).length"), 0);
+});
+test("Compartilhado: renda alterada pede nova conferência das partes proporcionais", () => {
+  const { run } = context();
+  const x = sharedState([
+    sharedItem({ id: "salary", type: "income", mode: "personal", owner: "ana", value: 300000 }),
+    sharedItem({ mode: "income" }),
+  ]);
+  x.paid["shared:rent:ana@2026-10"] = true;
+  run(
+    `state=${JSON.stringify(x)};month='2026-10';modal={kind:'shared-item',id:'salary'};submitShared({target:{name:'Salário',type:'income',value:'4000',date:'2026-10-31',category:'Receitas',mode:'personal',owner:'ana',recurring:'on'}})`,
+  );
+  assert.equal(run("state.paid['shared:rent:ana@2026-10']"), undefined);
+  assert.equal(run("state.shared.items[0].value"), 400000);
+});
+test("A navegação remove telas duplicadas e protege plantões no modo local", () => {
+  const { run, get, document } = context();
+  run("view='shared';render()");
+  assert.ok(!get("#nav").innerHTML.includes("Conselhos"));
+  assert.ok(!get("#nav").innerHTML.includes("Dívidas e parcelas"));
+  assert.ok(!get("#nav").innerHTML.includes("Contas recorrentes"));
+  assert.ok(!get("#nav").innerHTML.includes("Plantões"));
+  document.listeners.click({ target: { closest: () => ({ dataset: { view: "shifts" } }) } });
+  assert.equal(run("view"), "shared");
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "day", date: "2026-10-31" } }) } });
+  assert.equal(run("state.shifts.length"), 0);
+  run("view='coach';render()");
+  assert.equal(run("view"), "shared");
+});
+test("Categorias têm formulário, arquivamento e preservam o histórico", () => {
+  const { run } = context();
+  run("modal={kind:'category'};submitCategory({target:{name:'Pets',type:'expense',color:'#358268'}})");
+  assert.ok(run("state.categories.some(c=>c.name==='Pets')"));
+  run(
+    "state.entries=[{id:'pet',name:'Ração',type:'expense',value:1000,date:month+'-01',category:'Pets',recurring:false,end:''}];modal={kind:'category',id:state.categories.find(c=>c.name==='Pets').id};submitCategory({target:{name:'Animais',type:'expense',color:'#358268'}})",
+  );
+  assert.equal(run("state.entries[0].category"), "Animais");
+  run("handleExperienceAction('category-archive',{dataset:{id:state.categories.find(c=>c.name==='Animais').id}})");
+  assert.equal(run("state.categories.find(c=>c.name==='Animais').archived"), true);
+  assert.ok(!run("categoryField('Outros','expense')").includes("Animais"));
+  assert.ok(run("categoryField('Animais','expense',false,true)").includes("Animais"));
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Filtros de lançamentos combinam categoria, tipo, perfil e situação", () => {
+  const { run, get } = context();
+  run(
+    `state=upgradeState(${JSON.stringify(sharedState([sharedItem({ name: "Condomínio", category: "Casa" })]))});month='2026-10';state.entries=[{id:'other',name:'Farmácia',type:'expense',value:5000,date:month+'-01',category:'Saúde',recurring:false,end:''}];view='transactions';ledgerCategory='Casa';ledgerProfile='ana';render()`,
+  );
+  assert.ok(get("#main").innerHTML.includes("Condomínio"));
+  assert.ok(!get("#main").innerHTML.includes("Farmácia"));
+  run("ledgerFrequency='once';render()");
+  assert.ok(!get("#main").innerHTML.includes("shared-paid"));
+});
+test("Cópia de despesa dividida mantém perfis e não duplica no segundo clique", () => {
+  const { run } = context();
+  run(
+    `state=upgradeState(${JSON.stringify(sharedState([sharedItem({ recurring: false })]))});state.paid['shared:rent:ana@2026-10']=true;copyMonthData(state,'2026-10','2026-11',{entries:true},uid);copyMonthData(state,'2026-10','2026-11',{entries:true},uid)`,
+  );
+  assert.equal(run("state.shared.items.length"), 2);
+  assert.equal(run("state.entries.length"), 0);
+  assert.equal(run("Finance.totals(state,'2026-11').expense"), 100001);
+  assert.equal(run("Finance.totals(state,'2026-11').paid"), 0);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Troca de conta limpa filtros, buscas e formulários da interface", () => {
+  const { run, get } = context();
+  run(
+    "query='Consulta privada';categoryQuery='Categoria privada';ledgerProfile='ana';ledgerCategory='Saúde';sharedFilter='ana';view='transactions';modal={kind:'entry'}",
+  );
+  get("#fields").innerHTML = '<input value="informação privada">';
+  get("#main").innerHTML = "dados financeiros";
+  run("resetWorkspaceContext()");
+  assert.equal(run("query"), "");
+  assert.equal(run("categoryQuery"), "");
+  assert.equal(run("ledgerProfile"), "all");
+  assert.equal(run("view"), "shared");
+  assert.equal(get("#fields").innerHTML, "");
+  assert.equal(get("#main").innerHTML, "");
+  assert.equal(run("modal"), null);
+});
+test("Curva confirmada fecha no mesmo caixa do painel sem somar previsão pendente", () => {
+  const { run } = context();
+  run(
+    "month='2026-10';state.entries=[{id:'income',name:'Renda',type:'income',value:100000,date:'2026-10-03',category:'Receitas',recurring:false,end:''},{id:'expense',name:'Conta',type:'expense',value:10000,date:'2026-10-10',category:'Outros',recurring:false,end:''}];state.paid['income@2026-10']=true;state.monthSettings['2026-10']={opening:5000}",
+  );
+  assert.equal(run("confirmedFlow().length"), 31);
+  assert.equal(run("confirmedFlow()[0].value"), 5000);
+  assert.equal(run("confirmedFlow()[2].value"), 105000);
+  assert.equal(run("confirmedFlow().at(-1).value"), run("Finance.availableAfterSaving(state,month)"));
+});
+test("Recomeçar os registros preserva a aparência escolhida sem carregar dados financeiros", () => {
+  const { run } = context();
+  run(
+    "state.budget=12345;state.appearance={...AppearanceModel.defaults,style:'editorial',density:'compact'};state=freshRecords()",
+  );
+  assert.equal(run("state.budget"), 0);
+  assert.equal(run("state.appearance.style"), "editorial");
+  assert.equal(run("state.appearance.density"), "compact");
+  assert.ok(run("Finance.valid(state)"));
+});
+
+const submitForm = (run, values) => run(`$('#form').listeners.submit({preventDefault(){},target:${JSON.stringify(values)}})`);
+test("Correção do cliente: toda linha de perfil em Lançamentos tem botão de excluir", () => {
+  const { run, get } = context();
+  run(`state=${JSON.stringify(sharedState([sharedItem({ recurring: false })]))};month='2026-10';view='transactions';render()`);
+  const html = get("#main").innerHTML;
+  assert.equal((html.match(/data-action="shared-delete"/g) || []).length, 2);
+  assert.equal((html.match(/data-action="shared-edit"/g) || []).length, 2);
+  run("handleSharedAction('shared-delete',{dataset:{id:'rent'}})");
+  assert.equal(run("state.shared.items.length"), 0);
+});
+test("Correção do cliente: editar um lançamento de perfil mostra Excluir dentro da janela", () => {
+  const { run, get } = context();
+  run(`state=${JSON.stringify(sharedState([sharedItem()]))};month='2026-10';openSharedItem('expense','rent')`);
+  assert.ok(get("#form-danger").innerHTML.includes('data-action="shared-delete"'));
+  run(`openEntry('expense',false,undefined)`);
+  assert.equal(get("#form-danger").innerHTML, "");
+});
+test("Correção do cliente: perfil com lançamentos abre a lista e pode ser excluído junto com eles", () => {
+  const { run, get } = context();
+  const x = sharedState([
+    sharedItem(),
+    sharedItem({ id: "salary", type: "income", mode: "personal", owner: "ana", members: [], value: 300000, name: "Salário" }),
+    sharedItem({ id: "gym", mode: "personal", owner: "bruno", members: [], value: 9000, name: "Academia" }),
+  ]);
+  x.paid = { "shared:rent:ana@2026-10": true, "shared:gym:bruno@2026-10": true };
+  run(`state=${JSON.stringify(x)};month='2026-10';handleSharedAction('shared-profile-delete',{dataset:{id:'ana'}})`);
+  assert.equal(run("modal.kind"), "shared-profile-remove");
+  assert.equal(run("state.shared.profiles.length"), 3);
+  assert.ok(get("#fields").innerHTML.includes("Salário") && get("#fields").innerHTML.includes("Aluguel"));
+  assert.ok(!get("#fields").innerHTML.includes("Academia"));
+  assert.ok(get("#form-danger").innerHTML.includes("shared-profile-purge"));
+  run("handleSharedAction('shared-profile-purge',{dataset:{id:'ana'}})");
+  assert.equal(run("state.shared.profiles.some(p=>p.id==='ana')"), false);
+  assert.equal(run("JSON.stringify(state.shared.items.map(e=>e.id))"), '["gym"]');
+  assert.equal(run("JSON.stringify(Object.keys(state.paid))"), '["shared:gym:bruno@2026-10"]');
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Correção do cliente: perfil sem lançamentos é excluído direto", () => {
+  const { run } = context();
+  run(`state=${JSON.stringify(sharedState([]))};handleSharedAction('shared-profile-delete',{dataset:{id:'ana'}})`);
+  assert.equal(run("state.shared.profiles.length"), 2);
+});
+test("Conta dividida mensal: ocultar só um mês, restaurar e encerrar a partir de um mês", () => {
+  const { run } = context();
+  const x = sharedState([sharedItem({ date: "2026-09-10" })]);
+  x.paid = { "shared:rent:ana@2026-10": true, "shared:rent:ana@2026-09": true };
+  run(`state=${JSON.stringify(x)};month='2026-10';handleSharedAction('shared-delete',{dataset:{id:'rent'}})`);
+  submitForm(run, { scope: "month" });
+  assert.equal(run("SharedFinance.entries(state,'2026-10').length"), 0);
+  assert.equal(run("SharedFinance.entries(state,'2026-11').length"), 2);
+  assert.equal(run("state.paid['shared:rent:ana@2026-10']"), undefined);
+  assert.equal(run("state.paid['shared:rent:ana@2026-09']"), true);
+  assert.ok(run("Finance.valid(state)"));
+  run("handleSharedAction('shared-restore-month',{dataset:{id:'rent'}})");
+  assert.equal(run("SharedFinance.entries(state,'2026-10').length"), 2);
+  assert.equal(run("'skip' in state.shared.items[0]"), false);
+  run("month='2026-11';handleSharedAction('shared-delete',{dataset:{id:'rent'}})");
+  submitForm(run, { scope: "future" });
+  assert.equal(run("state.shared.items[0].end"), "2026-10");
+  assert.equal(run("SharedFinance.entries(state,'2026-11').length"), 0);
+  assert.equal(run("SharedFinance.entries(state,'2026-10').length"), 2);
+});
+test("Validação rejeita meses ocultos malformados em contas divididas", () => {
+  assert.ok(!F.valid(sharedState([sharedItem({ skip: ["2026-13"] })])));
+  assert.ok(!F.valid(sharedState([sharedItem({ skip: ["2026-10", "2026-10"] })])));
+  assert.ok(F.valid(sharedState([sharedItem({ skip: ["2026-10"] })])));
+});
+test("Conta mensal comum: lixeira pergunta o alcance e 'só este mês' pode voltar", () => {
+  const { run, document } = context();
+  run(`state.entries=[{id:'rent',name:'Aluguel',type:'expense',value:1000,date:'2026-09-05',recurring:true,end:'',category:'Moradia'}];month='2026-10'`);
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "delete", id: "rent" } }) } });
+  assert.equal(run("modal.kind"), "remove-recurring");
+  submitForm(run, { scope: "month" });
+  assert.equal(run("Finance.entries(state,'2026-10').length"), 0);
+  assert.equal(run("Finance.entries(state,'2026-11').length"), 1);
+  run("handleMonthAction('restore-month-entry',{dataset:{id:'rent'}})");
+  assert.equal(run("Finance.entries(state,'2026-10').length"), 1);
+});
+test("Parcela na lista: a lixeira exclui a compra inteira, sem desviar de tela", () => {
+  const { run, document } = context();
+  run(`state.debts=[{id:'d1',name:'Geladeira',creditor:'',start:'2026-10-01',firstDue:'2026-10-10',total:1000,count:2,principal:0}];state.paid['debt:d1:0@2026-10']=true;month='2026-10'`);
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "delete", id: "debt:d1:0" } }) } });
+  assert.equal(run("state.debts.length"), 0);
+  assert.equal(run("Object.keys(state.paid).length"), 0);
+});
+test("Desfazer aporte não trava mais a tela", () => {
+  const { run, document } = context();
+  run(`state.funds=[{id:'f1',name:'Reserva',kind:'reserve',product:'',balance:0,adjustment:0,liquidity:'daily',risk:'low'}];state.transfers=[{id:'t1',fundId:'f1',value:5000,date:'2026-10-01',kind:'deposit'},{id:'t2',fundId:'f1',value:5000,date:'2026-10-02',kind:'withdraw'}]`);
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "transfer-delete", id: "t1" } }) } });
+  assert.equal(run("state.transfers.length"), 2);
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "transfer-delete", id: "t2" } }) } });
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "transfer-delete", id: "t1" } }) } });
+  assert.equal(run("state.transfers.length"), 0);
+});
+test("Plantões escondidos não somam na renda de quem não é o dono", () => {
+  const { run } = context();
+  run("state.shifts=['2026-10-23'];state.shiftPaid=['2026-10-23'];month='2026-10';render()");
+  assert.equal(run("Finance.totals(state,'2026-10').income"), 0);
+  run("var Account={canUseShifts:true,saveState:()=>true};render()");
+  assert.equal(run("Finance.totals(state,'2026-10').income"), 5000);
+  assert.equal(run("Finance.shiftList(state).length"), 1);
+});
+test("Valores no formato brasileiro viram centavos certos", () => {
+  for (const [v, c] of [["1.500,50", 150050], ["1500,5", 150050], ["149.90", 14990], ["1.500", 150000], ["R$ 2.000,00", 200000], ["", 0], [12.3, 1230]])
+    assert.equal(F.cents(v), c);
+  assert.ok(Number.isNaN(F.cents("abc")));
+  assert.equal(F.plain(150050), "1500,50");
+});
+test("Nome do mês sem o 'De' maiúsculo e valores ocultáveis nas linhas", () => {
+  const { run, get } = context();
+  assert.equal(run("mlabel('2026-11')"), "Novembro de 2026");
+  run(`state.entries=[{id:'a',name:'Mercado',type:'expense',value:1000,date:'2026-10-05',recurring:false,end:'',category:'Outros'}];month='2026-10';view='transactions';render()`);
+  assert.ok(/class="amount tx-value[^"]*" data-private/.test(get("#main").innerHTML));
+});
+test("Lançamento comum salvo com vírgula e em outro mês leva para o mês certo", () => {
+  const { run } = context();
+  run("month='2026-10';openEntry()");
+  submitForm(run, { type: "expense", value: "1.234,56", name: "Mercado", date: "2026-12-03", category: "Outros" });
+  assert.equal(run("state.entries[0].value"), 123456);
+  assert.equal(run("month"), "2026-12");
+});
+test("Todas as telas renderizam, inclusive Ajuda", () => {
+  const { run, get } = context();
+  for (const v of ["shared", "transactions", "categories", "forecast", "goals", "wealth", "appearance", "settings", "help"]) {
+    run(`view='${v}';render()`);
+    assert.ok(get("#main").innerHTML.length > (v === "appearance" ? 100 : 300), v);
+  }
+  assert.ok(get("#nav").innerHTML.includes("Ajuda"));
 });
 console.log(`${checks} verificações passaram.`);

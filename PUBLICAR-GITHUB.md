@@ -1,36 +1,39 @@
-# Publicar o Avunara
+# Colocar o Vértice no ar
 
-O Avunara é a nova versão do Vértice. O repositório existente é `frogliz/vertice`; o caminho `/vertice/` continua válido. Renomear o aplicativo não exige criar outro repositório nem outra conta de usuário.
+## 1. Subir os arquivos
 
-## Atualizar o repositório existente
+O repositório é `frogliz/vertice`. O endereço continua https://frogliz.github.io/vertice/.
 
-1. Execute `node export-github.cjs` para preparar `entrega/avunara-github`.
-2. Abra [o repositório](https://github.com/frogliz/vertice) e use **Add file → Upload files**.
-3. Envie o conteúdo da pasta preparada, com `index.html` na raiz. Inclua `assets`, `vendor`, `database` e `.github`. Não envie a pasta de entrega como um diretório extra.
-4. Confira os arquivos e conclua o commit em `main`.
-5. Acompanhe a execução em **Actions**. O workflow **Publicar Avunara** roda os testes, prepara `dist/` e publica pelo GitHub Pages.
+**Importante:** esta versão apaga os arquivos antigos de estilo e scripts (`style.css`, `premium.css`, `avunara.js` e outros). Por isso, suba os arquivos substituindo tudo:
 
-Também é possível copiar os arquivos para um clone autenticado, conferir `git diff`, criar um commit e executar `git push`. A entrega exclui histórico Git, identidade do Sites, imagens de referência e backups financeiros.
+1. No computador, clone o repositório ou baixe-o como zip.
+2. Apague todos os arquivos dele, **menos a pasta `.git`**.
+3. Copie para dentro todo o conteúdo desta entrega, inclusive as pastas ocultas `.github` e o arquivo `.gitignore`.
+4. Faça o commit e o push para `main`.
 
-O site existente é [frogliz.github.io/vertice](https://frogliz.github.io/vertice/). Use o endereço mostrado em **Settings → Pages** se a configuração de hospedagem mudar. Para projetos novos, escolha GitHub Actions como fonte de publicação.
+Pelo site do GitHub também dá: apague os arquivos antigos pelo próprio site e depois use **Add file > Upload files** com o conteúdo desta pasta.
 
-## Dados, contas e preferências
+Em **Actions**, o fluxo **Publicar Vértice** roda os testes e publica. Em **Settings > Pages**, a fonte precisa estar como **GitHub Actions**.
 
-`config.js` contém a URL e a chave publicável do Supabase. Nunca adicione chave secreta, `service_role`, senha de banco ou credencial pessoal. Os nomes internos `vertice_states` e `vertice-*` foram mantidos para compatibilidade.
+## 2. Conferir o Supabase (uma vez)
 
-O projeto configurado é `kdngcqztmimqzwckwzje`. O banco precisa ter `database/SETUP.sql` aplicado. A publicação do site não executa SQL. Antes de qualquer alteração no banco, confira o projeto e leia o README.
+Nada no banco precisa mudar: a tabela e a função de salvar continuam as mesmas, e os dados de todos os usuários são lidos do jeito que estão.
 
-A proteção adicional da área do proprietário está em `database/SECURITY-HARDENING.sql`, seguida de `database/VERIFY.sql`. Ela não foi aplicada nem verificada em produção nesta entrega por falta de acesso ao projeto configurado. O metadado de proprietário deve ser atribuído apenas ao UUID verificado do dono.
+No painel do projeto `kdngcqztmimqzwckwzje`:
 
-No painel do Supabase, configure Site URL e Redirect URLs com o endereço completo, incluindo `/vertice/`. Para confirmação e recuperação por e-mail de usuários externos, confira o provedor SMTP. Não altere configurações globais de autenticação sem considerar os outros aplicativos do projeto.
+- **Authentication > URL Configuration**: Site URL `https://frogliz.github.io/vertice/` e o mesmo endereço em Redirect URLs. Sem isso, os links de confirmação e de recuperação de senha podem abrir no lugar errado.
+- **Authentication > Providers > Email**: ligue a proteção contra senhas vazadas.
+- **Authentication > SMTP**: para enviar e-mails para muita gente, configure um SMTP próprio. O envio padrão do Supabase tem limite baixo por hora.
+- **Plantões**: para liberar só para você, abra `database/DONO-PLANTOES.sql`, troque o e-mail pelo seu e rode no SQL Editor. Depois saia e entre de novo.
 
-O Ateliê salva estilo, modo, cor, densidade, movimento e privacidade inicial. Na conta, essas escolhas fazem parte dos registros sincronizados e do backup. No modo local, ficam no navegador. A atualização mantém backups anteriores compatíveis.
+O complemento `database/SECURITY-HARDENING.sql` é opcional e não foi aplicado.
 
-## Conferir a publicação
+## 3. Testar depois de publicar
 
-- Abra o site e confirme a marca Avunara.
-- Mude o estilo no Ateliê, recarregue e confira a escolha.
-- Entre com sua conta e aguarde o status de salvamento. Confira outro dispositivo quando a sincronização estiver disponível.
-- Uma segunda conta deve ter seus próprios registros e preferências.
+- Abra o site em uma aba anônima: deve aparecer a tela de entrada do Vértice.
+- Entre com uma conta que já tinha dados: os lançamentos e perfis devem estar lá.
+- Em Lançamentos, exclua um lançamento de teste pela lixeira.
+- Mude o estilo no Ateliê, recarregue e veja se continua.
+- No celular, adicione à tela inicial e abra pelo ícone.
 
-Referências: [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), [URLs de retorno do Supabase](https://supabase.com/docs/guides/auth/redirect-urls) e [SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
+Se o navegador mostrar o visual antigo, recarregue forçando (Ctrl + Shift + R) ou espere alguns minutos: o GitHub Pages guarda arquivos em cache.

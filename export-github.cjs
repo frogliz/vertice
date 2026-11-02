@@ -1,8 +1,13 @@
-const fs=require('node:fs'),path=require('node:path');
-const root=__dirname,out=path.join(root,'entrega','avunara-github');
-fs.mkdirSync(out,{recursive:true});
-const files=['AGENTS.md','appearance-model.js','avunara.js','avunara.css','font.css','catalog.js','security.js','experience.js','premium.css','_headers','tests-security.cjs','index.html','shared-engine.js','shared.js','shared.css','style.css','growth.css','web.css','monthly.css','auth.css','engine.js','growth.js','monthly.js','theme.js','cloud-store.js','auth-errors.js','auth.js','app.js','config.js','config.example.js','favicon.svg','build-web.cjs','tests.cjs','tests-theme.cjs','tests-cloud.cjs','tests-auth.cjs','README.md','PUBLICAR-GITHUB.md','LEIA-ME.md','.gitignore','export-github.cjs'];
-for(const file of files)fs.copyFileSync(path.join(root,file),path.join(out,file));
-for(const dir of ['vendor','database','.github','assets'])fs.cpSync(path.join(root,dir),path.join(out,dir),{recursive:true});
-fs.appendFileSync(path.join(out,'.gitignore'),'\ndist/\n');
-console.log('Pasta pronta para seu GitHub: '+out);
+// Monta entrega/vertice-github com o repositório completo, pronto para subir no GitHub.
+const fs = require("node:fs"),
+  path = require("node:path");
+const root = __dirname,
+  out = path.join(root, "entrega", "vertice-github");
+const skip = new Set(["entrega", "dist", "node_modules", ".git"]);
+fs.rmSync(out, { recursive: true, force: true });
+fs.mkdirSync(out, { recursive: true });
+for (const name of fs.readdirSync(root)) {
+  if (skip.has(name) || name.endsWith(".log") || /-backup-.*\.json$/.test(name)) continue;
+  fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
+}
+console.log("Pasta pronta para o GitHub: " + out);

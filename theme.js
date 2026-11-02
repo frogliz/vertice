@@ -1,43 +1,227 @@
-'use strict';
-const Appearance=(()=>{
-  const M=AppearanceModel,legacyKey='vertice-appearance-v1',keyFor=id=>'vertice-appearance-v2:'+id;
-  let legacy=null;try{legacy=JSON.parse(localStorage.getItem(legacyKey)||'null')}catch(_){}
-  let scope='device',prefs=M.normalize(legacy),onChange=null,lastSaved=true;
-  const media=typeof matchMedia==='function'?matchMedia('(prefers-color-scheme: light)'):null;
-  const safe=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const all=s=>document.querySelectorAll(s);
-  const read=id=>{try{const value=JSON.parse(localStorage.getItem(keyFor(id))||'null');return M.valid(value)?value:null}catch(_){return null}};
-  prefs=read('device')||prefs;
-  function statusText(){return !lastSaved?'Aplicado nesta sessão. Confira o salvamento dos seus dados.':scope.startsWith('user:')?'Preferência salva neste dispositivo e incluída na sincronização da conta.':'Preferência salva neste navegador.'}
-  function apply(){
-    const mode=prefs.mode==='system'?(media?.matches?'light':'dark'):prefs.mode;
-    const hex=prefs.accent==='mono'?(mode==='dark'?'#f0f2ef':'#202924'):prefs.accent==='custom'?prefs.custom:M.colors[prefs.accent];
-    const rgb=hex.match(/\w\w/g).map(v=>parseInt(v,16)),linear=rgb.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4}),luminance=linear[0]*.2126+linear[1]*.7152+linear[2]*.0722;
-    const readable=mode==='light'&&luminance>.18?rgb.map(v=>Math.round(v*.42)):mode==='dark'&&luminance<.18?rgb.map(v=>Math.round(140+v*.44)):rgb,root=document.documentElement;
-    root.dataset.theme=mode;root.dataset.style=prefs.style;root.dataset.density=prefs.density;root.dataset.motion=prefs.motion?'on':'off';root.style.setProperty('--green',hex);root.style.setProperty('--accent-rgb',rgb.join(','));root.style.setProperty('--accent-readable','rgb('+readable.join(',')+')');root.style.setProperty('--accent-ink',luminance>.179?'#152018':'#ffffff');
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content',mode==='dark'?'#0d1210':'#f4f5ef');
-    for(const [selector,key,field] of [['[data-theme-style]','style','themeStyle'],['[data-theme-mode]','mode','themeMode'],['[data-theme-accent]','accent','themeAccent'],['[data-theme-density]','density','themeDensity']])all(selector).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[field]===prefs[key])));
-    all('[data-appearance-custom]').forEach(el=>el.value=prefs.custom);all('[data-appearance-hex]').forEach(el=>el.textContent=prefs.custom.toUpperCase());all('[data-appearance-motion]').forEach(el=>el.checked=prefs.motion);all('[data-appearance-private]').forEach(el=>el.checked=prefs.privateStart);
-    all('[data-current-style]').forEach(el=>el.textContent=M.styles[prefs.style].name);all('[data-appearance-status]').forEach(el=>el.textContent=statusText());
+"use strict";
+const Appearance = (() => {
+  const M = AppearanceModel,
+    legacyKey = "vertice-appearance-v1",
+    keyFor = (id) => "vertice-appearance-v2:" + id;
+  let legacy = null;
+  try {
+    legacy = JSON.parse(localStorage.getItem(legacyKey) || "null");
+  } catch (_) {}
+  let scope = "device",
+    prefs = M.normalize(legacy),
+    onChange = null,
+    lastSaved = true;
+  const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : null;
+  const safe = (v) =>
+    String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const all = (s) => document.querySelectorAll(s);
+  const read = (id) => {
+    try {
+      const value = JSON.parse(localStorage.getItem(keyFor(id)) || "null");
+      return M.valid(value) ? value : null;
+    } catch (_) {
+      return null;
+    }
+  };
+  prefs = read("device") || prefs;
+  function statusText() {
+    return !lastSaved
+      ? "Aplicado agora. Confira se seus dados foram salvos."
+      : scope.startsWith("user:")
+        ? "Salvo na sua conta. Vale em todos os seus aparelhos."
+        : "Salvo neste navegador.";
   }
-  function persist(){lastSaved=true;try{localStorage.setItem(keyFor(scope),JSON.stringify(prefs))}catch(_){lastSaved=false}if(onChange){try{if(onChange({...prefs})===false)lastSaved=false}catch(_){lastSaved=false}}}
-  function set(next){const privacyChanged=next.privateStart!==undefined&&next.privateStart!==prefs.privateStart;const candidate={...prefs,...next};if(!M.valid(candidate))return false;prefs=candidate;persist();apply();if(privacyChanged&&typeof applyPrivacyPreference==='function')applyPrivacyPreference();return true}
-  function bind(id,remote,handler){scope=id;onChange=typeof handler==='function'?handler:null;prefs=M.valid(remote)?{...remote}:read(id)||M.normalize(legacy);lastSaved=true;apply()}
-  function sync(remote){if(M.valid(remote)&&JSON.stringify(remote)!==JSON.stringify(prefs)){prefs={...remote};try{localStorage.setItem(keyFor(scope),JSON.stringify(prefs))}catch(_){}apply()}}
-  function detach(){onChange=null;scope='device';prefs=read(scope)||M.normalize(legacy);lastSaved=true;apply()}
-  function panel(){
-    return `<div class="atelier-panel"><div class="atelier-section-label"><span>01</span><div><h3>Qual é o seu estilo?</h3><p>Três atmosferas. O mesmo espaço para a sua vida.</p></div></div><div class="style-gallery">${Object.entries(M.styles).map(([id,s])=>`<button class="style-card style-${id}" data-theme-style="${id}" aria-pressed="${prefs.style===id}"><span class="style-thumbnail" aria-hidden="true"><i class="mini-rail"></i><i class="mini-title"></i><i class="mini-hero"></i><i class="mini-card one"></i><i class="mini-card two"></i><i class="mini-chart"></i><b>✓</b></span><span class="style-card-title">${s.name}<i>↗</i></span><small>${s.description}</small></button>`).join('')}</div><div class="atelier-columns"><section><div class="atelier-section-label"><span>02</span><div><h3>Luz e contraste</h3><p>Escolha como o espaço acompanha seu dia.</p></div></div><div class="mode-segment">${[['light','☀','Claro'],['dark','☾','Escuro'],['system','◒','Automático']].map(([id,icon,label])=>`<button data-theme-mode="${id}" aria-pressed="${prefs.mode===id}"><span aria-hidden="true">${icon}</span>${label}</button>`).join('')}</div></section><section><div class="atelier-section-label"><span>03</span><div><h3>Seu ritmo de leitura</h3><p>Mais respiro ou mais informação por tela.</p></div></div><div class="mode-segment density-segment">${[['comfortable','Confortável'],['compact','Compacto']].map(([id,label])=>`<button data-theme-density="${id}" aria-pressed="${prefs.density===id}">${label}</button>`).join('')}</div></section></div><section class="atelier-color-section"><div class="atelier-section-label"><span>04</span><div><h3>Uma cor que é sua</h3><p>O destaque se adapta para manter a leitura confortável.</p></div></div><div class="atelier-colors">${Object.entries(M.colors).map(([id,color])=>`<button class="atelier-swatch ${id==='mono'?'is-mono':''}" data-theme-accent="${id}" aria-label="${({mono:'Preto e branco',mint:'Verde aurora',blue:'Azul horizonte',violet:'Violeta',amber:'Âmbar'})[id]}" aria-pressed="${prefs.accent===id}" style="--swatch:${color||'#bfc5bf'}"><span>✓</span></button>`).join('')}<label class="atelier-custom"><input data-appearance-custom type="color" value="${safe(prefs.custom)}" aria-label="Cor personalizada"><span>Personalizada<small data-appearance-hex>${safe(prefs.custom.toUpperCase())}</small></span></label></div></section><div class="atelier-toggles"><label><span><strong>Movimento suave</strong><small>Pequenos movimentos nos elementos decorativos.</small></span><input data-appearance-motion type="checkbox" ${prefs.motion?'checked':''}><i aria-hidden="true"></i></label><label><span><strong>Começar com valores ocultos</strong><small>Mais discrição ao abrir seu painel.</small></span><input data-appearance-private type="checkbox" ${prefs.privateStart?'checked':''}><i aria-hidden="true"></i></label></div><div class="atelier-save"><span><i></i><span data-appearance-status>${statusText()}</span></span><button data-appearance="reset">Restaurar padrão</button></div></div>`;
+  function resolvedMode() {
+    return prefs.mode === "system" ? (media?.matches ? "light" : "dark") : prefs.mode;
   }
-  function open(){const target=document.querySelector('#appearance-controls');if(target)target.innerHTML=panel();apply();document.querySelector('#theme-dialog').showModal()}
-  document.addEventListener('click',e=>{const b=e.target.closest('[data-theme-style],[data-theme-mode],[data-theme-accent],[data-theme-density],[data-appearance]');if(!b)return;if(b.dataset.themeStyle)set({style:b.dataset.themeStyle});else if(b.dataset.themeMode)set({mode:b.dataset.themeMode});else if(b.dataset.themeAccent)set({accent:b.dataset.themeAccent});else if(b.dataset.themeDensity)set({density:b.dataset.themeDensity});else if(b.dataset.appearance==='open')open();else if(b.dataset.appearance==='close')document.querySelector('#theme-dialog').close();else if(b.dataset.appearance==='reset')set({...M.defaults})});
-  document.addEventListener('input',e=>{if(e.target.hasAttribute?.('data-appearance-custom'))set({custom:e.target.value,accent:'custom'})});
-  document.addEventListener('change',e=>{if(e.target.hasAttribute?.('data-appearance-motion'))set({motion:e.target.checked});if(e.target.hasAttribute?.('data-appearance-private'))set({privateStart:e.target.checked})});
-  media?.addEventListener('change',()=>{if(prefs.mode==='system')apply()});apply();
-  return {apply,set,bind,sync,detach,panel,open,get:()=>({...prefs}),valid:M.valid,defaults:M.defaults};
+  function apply() {
+    const mode = resolvedMode();
+    const hex =
+      prefs.accent === "mono"
+        ? mode === "dark"
+          ? "#ffffff"
+          : "#000000"
+        : prefs.accent === "custom"
+          ? prefs.custom
+          : M.colors[prefs.accent];
+    const rgb = hex.match(/\w\w/g).map((v) => parseInt(v, 16)),
+      linear = rgb.map((v) => {
+        v /= 255;
+        return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      }),
+      luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+    // Versão do destaque usada em texto e linhas finas: escurece no claro e clareia no escuro.
+    const readable =
+        mode === "light" && luminance > 0.2
+          ? rgb.map((v) => Math.round(v * 0.5))
+          : mode === "dark" && luminance < 0.2
+            ? rgb.map((v) => Math.round(120 + v * 0.53))
+            : rgb,
+      root = document.documentElement;
+    root.dataset.theme = mode;
+    root.dataset.style = prefs.style;
+    root.dataset.density = prefs.density;
+    root.dataset.motion = prefs.motion ? "on" : "off";
+    root.style.setProperty("--accent", hex);
+    root.style.setProperty("--accent-rgb", rgb.join(","));
+    root.style.setProperty("--accent-readable", "rgb(" + readable.join(",") + ")");
+    root.style.setProperty("--accent-ink", luminance > 0.179 ? "#000000" : "#ffffff");
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", mode === "dark" ? "#000000" : "#ececf0");
+    for (const [selector, key, field] of [
+      ["[data-theme-style]", "style", "themeStyle"],
+      ["[data-theme-mode]", "mode", "themeMode"],
+      ["[data-theme-accent]", "accent", "themeAccent"],
+      ["[data-theme-density]", "density", "themeDensity"],
+    ])
+      all(selector).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[field] === prefs[key])));
+    all("[data-appearance-custom]").forEach((el) => (el.value = prefs.custom));
+    all("[data-appearance-hex]").forEach((el) => (el.textContent = prefs.custom.toUpperCase()));
+    all("[data-appearance-motion]").forEach((el) => (el.checked = prefs.motion));
+    all("[data-appearance-private]").forEach((el) => (el.checked = prefs.privateStart));
+    all("[data-current-style]").forEach((el) => (el.textContent = M.styles[prefs.style].name));
+    all("[data-appearance-status]").forEach((el) => (el.textContent = statusText()));
+  }
+  function persist() {
+    lastSaved = true;
+    try {
+      localStorage.setItem(keyFor(scope), JSON.stringify(prefs));
+    } catch (_) {
+      lastSaved = false;
+    }
+    if (onChange) {
+      try {
+        if (onChange({ ...prefs }) === false) lastSaved = false;
+      } catch (_) {
+        lastSaved = false;
+      }
+    }
+  }
+  function set(next) {
+    const privacyChanged = next.privateStart !== undefined && next.privateStart !== prefs.privateStart;
+    const candidate = { ...prefs, ...next };
+    if (!M.valid(candidate)) return false;
+    prefs = candidate;
+    persist();
+    apply();
+    if (privacyChanged && typeof applyPrivacyPreference === "function") applyPrivacyPreference();
+    return true;
+  }
+  function bind(id, remote, handler) {
+    scope = id;
+    onChange = typeof handler === "function" ? handler : null;
+    prefs = M.valid(remote) ? { ...remote } : read(id) || M.normalize(legacy);
+    lastSaved = true;
+    apply();
+  }
+  function sync(remote) {
+    if (M.valid(remote) && JSON.stringify(remote) !== JSON.stringify(prefs)) {
+      prefs = { ...remote };
+      try {
+        localStorage.setItem(keyFor(scope), JSON.stringify(prefs));
+      } catch (_) {}
+      apply();
+    }
+  }
+  function detach() {
+    onChange = null;
+    scope = "device";
+    prefs = read(scope) || M.normalize(legacy);
+    lastSaved = true;
+    apply();
+  }
+  const segment = (attr, items, current) =>
+    `<div class="segmented" role="group">${items
+      .map(
+        ([id, label]) => `<button type="button" ${attr}="${id}" aria-pressed="${current === id}">${label}</button>`,
+      )
+      .join("")}</div>`;
+  function panel() {
+    const styleCards = Object.entries(M.styles)
+      .map(
+        ([id, s]) =>
+          `<button type="button" class="style-card style-${id}" data-theme-style="${id}" aria-pressed="${prefs.style === id}"><span class="style-preview" aria-hidden="true"><i class="sp-lens"><b></b><b></b></i><i class="sp-row"></i><i class="sp-row short"></i><i class="sp-pill"></i></span><span class="style-name">${s.name}</span><span class="style-desc">${s.description}</span></button>`,
+      )
+      .join("");
+    const swatches = Object.entries(M.colors)
+      .map(
+        ([id, color]) =>
+          `<button type="button" class="swatch ${id === "mono" ? "is-mono" : ""}" data-theme-accent="${id}" aria-label="${M.colorNames[id]}" title="${M.colorNames[id]}" aria-pressed="${prefs.accent === id}" style="--swatch:${color || "transparent"}"><span aria-hidden="true">${typeof icon === "function" ? icon("check") : "✓"}</span></button>`,
+      )
+      .join("");
+    return `<div class="atelier">
+      <section class="atelier-block"><div class="atelier-title"><h3>Estilo do vidro</h3><p>Três acabamentos para o mesmo painel.</p></div><div class="style-gallery">${styleCards}</div></section>
+      <div class="atelier-split">
+        <section class="atelier-block"><div class="atelier-title"><h3>Luz</h3><p>Branco, preto ou igual ao seu aparelho.</p></div>${segment(
+          "data-theme-mode",
+          [
+            ["light", "Claro"],
+            ["dark", "Escuro"],
+            ["system", "Automático"],
+          ],
+          prefs.mode,
+        )}</section>
+        <section class="atelier-block"><div class="atelier-title"><h3>Espaçamento</h3><p>Mais respiro ou mais informação por tela.</p></div>${segment(
+          "data-theme-density",
+          [
+            ["comfortable", "Confortável"],
+            ["compact", "Compacto"],
+          ],
+          prefs.density,
+        )}</section>
+      </div>
+      <section class="atelier-block"><div class="atelier-title"><h3>Cor de destaque</h3><p>Aparece no botão principal, nos gráficos e nos detalhes.</p></div><div class="swatches">${swatches}<label class="swatch-custom"><input data-appearance-custom type="color" value="${safe(prefs.custom)}" aria-label="Escolher uma cor personalizada"><span>Personalizada<small data-appearance-hex>${safe(prefs.custom.toUpperCase())}</small></span></label></div></section>
+      <section class="atelier-block toggles">
+        <label class="toggle"><span><strong>Movimento suave</strong><small>O brilho do vidro se move devagar no cartão principal.</small></span><input data-appearance-motion type="checkbox" ${prefs.motion ? "checked" : ""}><i aria-hidden="true"></i></label>
+        <label class="toggle"><span><strong>Começar com valores ocultos</strong><small>Os valores aparecem borrados até você tocar no olho.</small></span><input data-appearance-private type="checkbox" ${prefs.privateStart ? "checked" : ""}><i aria-hidden="true"></i></label>
+      </section>
+      <div class="atelier-foot"><span class="saved-note"><i class="dot"></i><span data-appearance-status>${statusText()}</span></span><button type="button" class="btn ghost" data-appearance="reset">Restaurar padrão</button></div>
+    </div>`;
+  }
+  function open() {
+    const target = document.querySelector("#appearance-controls");
+    if (target) target.innerHTML = panel();
+    apply();
+    const dialog = document.querySelector("#theme-dialog");
+    if (!dialog.open) dialog.showModal();
+    document.querySelector("#appearance-title")?.focus?.();
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest?.(
+      "[data-theme-style],[data-theme-mode],[data-theme-accent],[data-theme-density],[data-appearance]",
+    );
+    if (!b) return;
+    if (b.dataset.themeStyle) set({ style: b.dataset.themeStyle });
+    else if (b.dataset.themeMode) set({ mode: b.dataset.themeMode });
+    else if (b.dataset.themeAccent) set({ accent: b.dataset.themeAccent });
+    else if (b.dataset.themeDensity) set({ density: b.dataset.themeDensity });
+    else if (b.dataset.appearance === "open") open();
+    else if (b.dataset.appearance === "close") document.querySelector("#theme-dialog").close();
+    else if (b.dataset.appearance === "reset") set({ ...M.defaults });
+  });
+  document.addEventListener("input", (e) => {
+    if (e.target.hasAttribute?.("data-appearance-custom")) set({ custom: e.target.value, accent: "custom" });
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.hasAttribute?.("data-appearance-motion")) set({ motion: e.target.checked });
+    if (e.target.hasAttribute?.("data-appearance-private")) set({ privateStart: e.target.checked });
+  });
+  media?.addEventListener("change", () => {
+    if (prefs.mode === "system") apply();
+  });
+  apply();
+  return {
+    apply,
+    set,
+    bind,
+    sync,
+    detach,
+    panel,
+    open,
+    mode: resolvedMode,
+    get: () => ({ ...prefs }),
+    valid: M.valid,
+    defaults: M.defaults,
+  };
 })();
-
-const icons={appearance:'M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.5h2a3 3 0 0 0 3-3A9 9 0 0 0 12 3z M7 10h.1 M11 7h.1 M16 8h.1',categories:'M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z',shared:'M3 10 12 3l9 7v11h-6v-7H9v7H3V10z',overview:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',transactions:'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',fixed:'M6 3h12v18l-3-2-3 2-3-2-3 2V3z M9 8h6M9 12h6',shifts:'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M7 3v4M17 3v4M3 11h18M8 15h1M15 15h1',forecast:'M3 3v18h18M7 15l4-5 4 3 6-8',goals:'M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9z M17 12a5 5 0 1 1-5-5 5 5 0 0 1 5 5z M12 11v2',debts:'M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z M3 10h18M7 15h3M14 15h3',wealth:'M12 3 3 12l9 9 9-9-9-9z M8 12h8M12 8v8',coach:'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z',settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2'};
-function navIcon(key){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[key]||icons.overview}"/></svg>`}
-function animatePage(){const key=view+'-'+month;if(animatePage.key===key)return;animatePage.key=key;const main=document.querySelector('#main');main.classList.remove('page-enter');void main.offsetWidth;main.classList.add('page-enter')}
-document.addEventListener('click',e=>{if(e.target.closest('[data-menu-toggle]')){const app=document.querySelector('.app'),open=app.classList.toggle('nav-open');document.querySelector('[data-menu-toggle]').setAttribute('aria-expanded',String(open))}if(e.target.closest('[data-menu-close],[data-view]')){document.querySelector('.app').classList.remove('nav-open');document.querySelector('[data-menu-toggle]')?.setAttribute('aria-expanded','false')}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelector('.app').classList.remove('nav-open');document.querySelector('[data-menu-toggle]')?.setAttribute('aria-expanded','false')}});

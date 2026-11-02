@@ -1,52 +1,280 @@
-'use strict';
-let categoryQuery='',ledgerCategory='all',ledgerFrequency='all',ledgerProfile='all',ledgerPage=0,hideAmounts=false;
-const ownerTools=()=>typeof Account!=='undefined'&&Account.canUseShifts===true;
-function resetWorkspaceContext(){
-  if(typeof Appearance!=='undefined')Appearance.detach();query='';filter=status=ledgerCategory=ledgerFrequency=ledgerProfile='all';categoryQuery='';ledgerPage=0;sharedFilter='all';selectedDebt=null;view='shared';modal=null;
-  const dialog=document.querySelector('#dialog');dialog?.close();
-  for(const selector of ['#main','#fields','#form-error']){const node=document.querySelector(selector);if(node){node.innerHTML='';node.textContent=''}}
-  const name=document.querySelector('.profile-text'),avatar=document.querySelector('.avatar');if(name)name.textContent='Meu espaço pessoal';if(avatar)avatar.textContent='EU';
+"use strict";
+let categoryQuery = "",
+  ledgerCategory = "all",
+  ledgerFrequency = "all",
+  ledgerProfile = "all",
+  ledgerPage = 0,
+  hideAmounts = false;
+const ownerTools = () => typeof Account !== "undefined" && Account.canUseShifts === true;
+function resetWorkspaceContext() {
+  if (typeof Appearance !== "undefined") Appearance.detach();
+  query = "";
+  filter = status = ledgerCategory = ledgerFrequency = ledgerProfile = "all";
+  categoryQuery = "";
+  ledgerPage = 0;
+  sharedFilter = "all";
+  selectedDebt = null;
+  view = "shared";
+  modal = null;
+  const dialog = document.querySelector("#dialog");
+  dialog?.close();
+  for (const selector of ["#main", "#fields", "#form-error"]) {
+    const node = document.querySelector(selector);
+    if (node) {
+      node.innerHTML = "";
+      node.textContent = "";
+    }
+  }
+  const name = document.querySelector(".profile-text"),
+    avatar = document.querySelector(".avatar");
+  if (name) name.textContent = "Meu espaço";
+  if (avatar) avatar.textContent = "EU";
 }
-const catList=()=>state.categories||CategoryCatalog.migrate(state);
-const categoryColor=name=>catList().find(c=>c.name===name)?.color||'#358268';
-function categoryField(value='Outros',type='expense',full=false,preserve=false){
-  const options=catList().filter(c=>(!c.archived&&[type,'both'].includes(c.type))||preserve&&c.name===value);
-  if(preserve&&!options.some(c=>c.name===value))options.unshift({name:value});
-  return `<label class="${full?'full':''}">Categoria<select name="category" required>${options.length?options.map(c=>`<option value="${esc(c.name)}" ${c.name===value?'selected':''}>${esc(c.name)}</option>`).join(''):'<option value="">Cadastre uma categoria ativa</option>'}</select></label>`;
+const catList = () => state.categories || CategoryCatalog.migrate(state);
+const categoryColor = (name) => catList().find((c) => c.name === name)?.color || "#8a8a96";
+function categoryField(value = "Outros", type = "expense", full = false, preserve = false) {
+  const options = catList().filter(
+    (c) => (!c.archived && [type, "both"].includes(c.type)) || (preserve && c.name === value),
+  );
+  if (preserve && !options.some((c) => c.name === value)) options.unshift({ name: value });
+  return `<label class="field ${full ? "full" : ""}"><span class="field-label">Categoria</span><select name="category" required>${options.length ? options.map((c) => `<option value="${esc(c.name)}" ${c.name === value ? "selected" : ""}>${esc(c.name)}</option>`).join("") : '<option value="">Cadastre uma categoria ativa</option>'}</select></label>`;
 }
-function metric(icon,label,value,detail,extra=''){
-  return `<article class="card metric ${extra}"><div class="metric-top"><span class="metric-icon">${icon}</span><span>${label}</span></div><strong class="metric-number">${F.money(value)}</strong><span class="tiny">${detail}</span></article>`;
+function filtersActive() {
+  return (
+    filter !== "all" ||
+    status !== "all" ||
+    ledgerCategory !== "all" ||
+    ledgerFrequency !== "all" ||
+    ledgerProfile !== "all" ||
+    !!query
+  );
 }
-function ledgerView(){
-  let list=F.entries(state,month).filter(e=>(filter==='all'||e.type===filter)&&(status==='all'||(status==='done')===e.done)&&(ledgerCategory==='all'||e.category===ledgerCategory)&&(ledgerProfile==='all'||e.profileId===ledgerProfile)&&(ledgerFrequency==='all'||(ledgerFrequency==='monthly'?e.recurring:ledgerFrequency==='installment'?!!e.debtId:!e.recurring&&!e.debtId))&&(`${e.name} ${e.category}`).toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR'))).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
-  const pageSize=40,pages=Math.max(1,Math.ceil(list.length/pageSize));ledgerPage=Math.min(ledgerPage,pages-1);
-  const income=list.filter(e=>e.type==='income').reduce((a,e)=>a+e.value,0),expense=list.filter(e=>e.type==='expense').reduce((a,e)=>a+e.value,0),names=[...new Set(F.entries(state,month).map(e=>e.category))].sort((a,b)=>a.localeCompare(b));
-  return `<div class="page-heading"><div><span class="eyebrow">TUDO NO MESMO LUGAR</span><h2>Lançamentos</h2><p>Avulsos, mensais e parcelas. Sem duplicar suas contas.</p></div><div class="quick-actions"><button data-action="csv">↓ Exportar</button><button data-action="debt-new">＋ Parcelar despesa</button>${sharedData().profiles.length?'<button data-action="shared-new-expense">Dividir despesa</button>':''}</div></div><div class="ledger-totals"><span>Entradas filtradas <strong class="positive">${F.money(income)}</strong></span><span>Despesas filtradas <strong>${F.money(expense)}</strong></span><span>Resultado <strong class="${income-expense<0?'negative':'positive'}">${F.money(income-expense)}</strong></span></div>
-    <div class="ledger-filters"><input id="search" type="search" placeholder="Buscar descrição ou categoria" aria-label="Buscar lançamento" value="${esc(query)}"><select id="type-filter" aria-label="Tipo"><option value="all">Todos os tipos</option><option value="income" ${filter==='income'?'selected':''}>Receitas</option><option value="expense" ${filter==='expense'?'selected':''}>Despesas</option></select><select id="status-filter" aria-label="Situação"><option value="all">Todas as situações</option><option value="done" ${status==='done'?'selected':''}>Confirmados</option><option value="pending" ${status==='pending'?'selected':''}>Pendentes</option></select><select id="ledger-category" aria-label="Categoria"><option value="all">Todas as categorias</option>${names.map(n=>`<option value="${esc(n)}" ${ledgerCategory===n?'selected':''}>${esc(n)}</option>`).join('')}</select><select id="ledger-frequency" aria-label="Frequência">${[['all','Todas as frequências'],['once','Avulsos'],['monthly','Mensais'],['installment','Parcelas']].map(([v,l])=>`<option value="${v}" ${ledgerFrequency===v?'selected':''}>${l}</option>`).join('')}</select>${sharedData().profiles.length?`<select id="ledger-profile" aria-label="Perfil"><option value="all">Todos os perfis</option>${sharedData().profiles.map(p=>`<option value="${esc(p.id)}" ${ledgerProfile===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`:''}<button data-action="clear-filters">Limpar filtros</button></div>
-    <article class="card ledger-card"><div class="section-head"><h2>Movimentações de ${esc(mlabel(month))}</h2><span class="count-badge">${list.length} registros</span></div>${list.length?list.slice(ledgerPage*pageSize,(ledgerPage+1)*pageSize).map(e=>transactionRow(e)).join(''):empty('Nenhum lançamento por aqui.','Adicione um registro ou ajuste os filtros.','expense')}${pages>1?`<div class="pagination"><button data-action="ledger-page" data-offset="-1" ${ledgerPage===0?'disabled':''}>← Anterior</button><span>${ledgerPage+1} de ${pages}</span><button data-action="ledger-page" data-offset="1" ${ledgerPage===pages-1?'disabled':''}>Próxima →</button></div>`:''}</article>${(state.debts||[]).length?`<details class="card installment-manager"><summary>Gerenciar ${(state.debts||[]).length} compras parceladas</summary>${(state.debts||[]).map(d=>{const x=F.debtSummary(state,d,today());return `<div class="row"><div class="row-main"><strong>${esc(d.name)}</strong><small>${x.paidCount}/${d.count} pagas · ${F.money(x.remaining)} restantes</small></div><button data-action="debt-details" data-id="${esc(d.id)}">Parcelas</button><button data-action="debt-edit" data-id="${esc(d.id)}">Editar</button><button class="danger" data-action="debt-delete" data-id="${esc(d.id)}">Excluir</button></div>`}).join('')}</details>${selectedDebt&&(state.debts||[]).some(d=>d.id===selectedDebt)?debtDetails((state.debts||[]).find(d=>d.id===selectedDebt)):''}`:''}<p class="note">Confirme cada recebimento ou pagamento quando acontecer. Contas mensais têm confirmação independente em cada mês.</p>`;
+function ledgerView() {
+  const all = F.entries(state, month);
+  let list = all
+    .filter(
+      (e) =>
+        (filter === "all" || e.type === filter) &&
+        (status === "all" || (status === "done") === e.done) &&
+        (ledgerCategory === "all" || e.category === ledgerCategory) &&
+        (ledgerProfile === "all" || e.profileId === ledgerProfile) &&
+        (ledgerFrequency === "all" ||
+          (ledgerFrequency === "monthly"
+            ? e.recurring
+            : ledgerFrequency === "installment"
+              ? !!e.debtId
+              : !e.recurring && !e.debtId)) &&
+        `${e.name} ${e.category}`.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")),
+    )
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  const pageSize = 40,
+    pages = Math.max(1, Math.ceil(list.length / pageSize));
+  ledgerPage = Math.min(ledgerPage, pages - 1);
+  const income = list.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0),
+    expense = list.filter((e) => e.type === "expense").reduce((a, e) => a + e.value, 0),
+    names = [...new Set(all.map((e) => e.category))].sort((a, b) => a.localeCompare(b)),
+    profiles = sharedData().profiles;
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${cur === v ? "selected" : ""}>${esc(l)}</option>`;
+  const actions =
+    btn("csv", "Exportar", { icon: "download", cls: "ghost" }) +
+    btn("month-copy", "Copiar de outro mês", { icon: "copy", cls: "ghost" }) +
+    btn("debt-new", "Parcelar compra", { icon: "layers" }) +
+    (profiles.length ? btn("shared-new-expense", "Dividir despesa", { icon: "split" }) : "");
+  return `${pageHead(esc(mlabel(month)), "Receitas, despesas, contas mensais e parcelas. Toque em Pagar quando o dinheiro sair de verdade.", actions)}
+  <div class="summary-strip"><div><span>Receitas</span>${amount(income, "pos")}</div><div><span>Despesas</span>${amount(expense)}</div><div><span>Resultado</span>${amount(income - expense, income - expense < 0 ? "neg" : "pos")}</div></div>
+  <div class="filters panel">
+    <label class="search">${icon("search")}<input id="search" type="search" placeholder="Buscar por descrição ou categoria" aria-label="Buscar lançamento" value="${esc(query)}"></label>
+    <div class="segmented" role="group" aria-label="Tipo">${[
+      ["all", "Tudo"],
+      ["income", "Receitas"],
+      ["expense", "Despesas"],
+    ]
+      .map(([v, l]) => `<button type="button" data-action="type-filter" data-id="${v}" aria-pressed="${filter === v}">${l}</button>`)
+      .join("")}</div>
+    <select id="status-filter" aria-label="Situação">${opt("all", "Todas as situações", status)}${opt("pending", "Pendentes", status)}${opt("done", "Confirmados", status)}</select>
+    <select id="ledger-category" aria-label="Categoria">${opt("all", "Todas as categorias", ledgerCategory)}${names.map((n) => opt(n, n, ledgerCategory)).join("")}</select>
+    <select id="ledger-frequency" aria-label="Frequência">${[
+      ["all", "Todas as frequências"],
+      ["once", "Só neste mês"],
+      ["monthly", "Mensais"],
+      ["installment", "Parcelas"],
+    ]
+      .map(([v, l]) => opt(v, l, ledgerFrequency))
+      .join("")}</select>
+    ${profiles.length ? `<select id="ledger-profile" aria-label="Perfil">${opt("all", "Todos os perfis", ledgerProfile)}${profiles.map((p) => opt(p.id, p.name, ledgerProfile)).join("")}</select>` : ""}
+    ${filtersActive() ? btn("clear-filters", "Limpar filtros", { cls: "link" }) : ""}
+  </div>
+  <article class="panel ledger">${panelHead("Movimentações", `${list.length} ${list.length === 1 ? "registro" : "registros"}${filtersActive() ? " com os filtros atuais" : ""}`, btn("expense", "Novo", { icon: "plus" }))}${
+    list.length
+      ? txList(list.slice(ledgerPage * pageSize, (ledgerPage + 1) * pageSize))
+      : filtersActive()
+        ? empty("Nada encontrado com esses filtros", "Mude a busca ou limpe os filtros para ver tudo do mês.", "clear-filters", "Limpar filtros")
+        : empty("Nenhum lançamento neste mês", "Adicione o que entra e o que sai. Contas mensais aparecem sozinhas nos próximos meses.", "expense", "Adicionar lançamento")
+  }${pages > 1 ? `<div class="pagination"><button type="button" class="btn ghost" data-action="ledger-page" data-offset="-1" ${ledgerPage === 0 ? "disabled" : ""}>${icon("left")}Anterior</button><span>Página ${ledgerPage + 1} de ${pages}</span><button type="button" class="btn ghost" data-action="ledger-page" data-offset="1" ${ledgerPage === pages - 1 ? "disabled" : ""}>Próxima${icon("right")}</button></div>` : ""}</article>
+  ${installmentManager()}`;
 }
-function categoriesView(){
-  const all=catList(),list=all.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(categoryQuery.toLocaleLowerCase('pt-BR'))),entries=F.entries(state,month);
-  return `<div class="page-heading"><div><span class="eyebrow">CADA VALOR TEM UM LUGAR</span><h2>Suas categorias</h2><p>Organize receitas e despesas com nomes e cores que fazem sentido.</p></div><button class="primary" data-action="category-new">＋ Nova categoria</button></div><div class="category-tools"><input id="category-search" type="search" placeholder="Buscar categoria" aria-label="Buscar categoria" value="${esc(categoryQuery)}"><span class="tiny">${all.filter(c=>!c.archived).length} ativas · ${all.filter(c=>c.archived).length} arquivadas</span></div><div class="category-grid">${list.map(c=>{const own=entries.filter(e=>e.category===c.name),expense=own.filter(e=>e.type==='expense').reduce((a,e)=>a+e.value,0),income=own.filter(e=>e.type==='income').reduce((a,e)=>a+e.value,0);return `<article class="card category-card ${c.archived?'archived':''}"><div class="section-head"><span class="category-symbol" style="background:${c.color}">${esc(c.name.slice(0,1).toUpperCase())}</span><span class="tiny">${c.archived?'Arquivada':({both:'Receitas e despesas',income:'Receitas',expense:'Despesas'})[c.type]}</span></div><h3>${esc(c.name)}</h3><div class="category-values"><strong>${F.money(expense||income)}</strong><small>${own.length} lançamentos neste mês</small></div><div class="category-card-actions"><button data-action="category-edit" data-id="${esc(c.id)}">Editar</button><button data-action="category-archive" data-id="${esc(c.id)}">${c.archived?'Reativar':'Arquivar'}</button>${!CategoryCatalog.used(state,c.name)?`<button class="text-button danger" data-action="category-delete" data-id="${esc(c.id)}" aria-label="Excluir categoria ${esc(c.name)}">×</button>`:''}</div></article>`}).join('')||empty('Nenhuma categoria encontrada.','Tente outro nome ou cadastre uma categoria.','category-new')}</div><p class="note">Arquivar preserva os lançamentos e o histórico. Alterar o nome atualiza os registros associados. Categorias em uso não podem ser excluídas.</p>`;
+function installmentManager() {
+  const debts = state.debts || [];
+  if (!debts.length) return "";
+  const rows = debts
+    .map((d) => {
+      const x = F.debtSummary(state, d, today());
+      return `<div class="debt-row"><div class="debt-main"><strong>${esc(d.name)}</strong><span class="muted">${x.paidCount} de ${d.count} pagas, faltam ${amount(x.remaining)}</span>${progress(pct(x.paidCount, d.count))}</div><div class="tx-actions">${btn("debt-details", selectedDebt === d.id ? "Fechar" : "Ver parcelas", { id: selectedDebt === d.id ? "" : d.id, cls: "ghost" })}${iconBtn("debt-edit", "edit", "Editar " + d.name, d.id)}${iconBtn("debt-delete", "trash", "Excluir " + d.name, d.id, "danger")}</div></div>${selectedDebt === d.id ? debtDetails(d) : ""}`;
+    })
+    .join("");
+  return `<article class="panel installments">${panelHead("Compras parceladas", "Cada parcela entra sozinha no mês certo. Excluir remove todas as parcelas.", btn("debt-new", "Parcelar compra", { icon: "plus", cls: "ghost" }))}${rows}</article>`;
 }
-function settingsView(){return `<div class="page-heading"><div><span class="eyebrow">SEU ESPAÇO, SUAS ESCOLHAS</span><h2>Configurações</h2><p>Preferências, privacidade e uma cópia dos seus dados.</p></div><button data-appearance="open">Personalizar aparência</button></div><article class="card atelier-settings-card"><div><span class="eyebrow">ATELIÊ VISUAL</span><h2>Seu espaço, do seu jeito.</h2><p>Estilos, cores e leitura. Sua escolha fica salva para a próxima visita.</p></div><button class="primary" data-view="appearance">Personalizar meu Avunara ↗</button></article><div class="settings-grid"><article class="card"><div class="section-head"><h2>Orçamento mensal</h2></div><label for="budget">Limite de despesas em ${esc(mlabel(month))}</label><input id="budget" type="number" min="0" step="0.01" max="999999999" value="${(F.budgetFor(state,month)/100).toFixed(2)}"><button class="primary" data-action="budget">Salvar limite</button><p class="note">Cada mês pode ter seu próprio limite e saldo inicial.</p><button data-action="month-settings">Ajustar mês</button></article><article class="card"><div class="section-head"><h2>Seus dados com você</h2></div><p class="muted">Exporte uma cópia completa para guardar ou restaurar seus registros.</p><div class="toolbar"><button class="primary" data-action="backup">↓ Backup JSON</button><button data-action="import">↑ Restaurar backup</button><button data-action="csv">↓ CSV deste mês</button></div><p class="note">Restaurar um backup substitui os registros atuais após sua confirmação. O CSV respeita o mês selecionado.</p></article><article class="card"><div class="section-head"><h2>Privacidade no dispositivo</h2></div><p class="muted">No modo local, as informações ficam neste navegador. Na conta online, os dados são separados por usuário.</p><p class="note">Em um computador compartilhado, encerre sua sessão e limpe os dados do site após confirmar o salvamento online ou exportar uma cópia.</p><button data-action="privacy">${hideAmounts?'Mostrar':'Ocultar'} valores na tela</button></article>${ownerTools()?'<article class="card"><div class="section-head"><h2>Área do proprietário</h2><span class="pill">ACESSO RESTRITO</span></div><p class="muted">Sua escala pessoal fica disponível apenas para a conta autorizada.</p><button data-view="shifts">Abrir meus plantões</button></article>':''}<article class="card"><div class="section-head"><h2>Recomeçar</h2></div><p class="muted">Você pode carregar um exemplo para explorar as funções ou apagar os registros desta conta. Exporte um backup antes.</p><div class="toolbar"><button data-action="demo">Carregar exemplo</button><button class="danger" data-action="reset">Apagar registros</button></div></article></div>`}
-function openCategory(id){const c=catList().find(c=>c.id===id);modal={kind:'category',id};$('#modal-title').textContent=c?'Editar categoria':'Nova categoria';$('#fields').innerHTML=field('Nome da categoria','name','text',c?.name||'',true,'required maxlength="60" placeholder="Ex.: Casa, Pets, Freelance"')+`<label>Usar em<select name="type">${[['both','Receitas e despesas'],['expense','Despesas'],['income','Receitas']].map(([v,l])=>`<option value="${v}" ${c?.type===v?'selected':''}>${l}</option>`).join('')}</select></label>`+field('Cor','color','color',c?.color||CategoryCatalog.palette[catList().length%6]);showDialog()}
-function submitCategory(e){if(modal?.kind!=='category')return false;const d=new FormData(e.target),old=catList().find(c=>c.id===modal.id),next={id:old?.id||uid(),name:String(d.get('name')||'').trim(),type:d.get('type'),color:d.get('color'),archived:old?.archived||false},categories=old?catList().map(c=>c.id===old.id?next:c):[...catList(),next];if(!CategoryCatalog.valid({categories})){$('#form-error').textContent='Use um nome único com até 60 caracteres. O limite é de 200 categorias.';return true}if(old&&old.name!==next.name&&old.name==='Parcelas'&&(state.debts||[]).length){$('#form-error').textContent='A categoria Parcelas é usada pelas compras parceladas existentes.';return true}if(old)CategoryCatalog.rename(state,old.name,next.name);state.categories=categories;$('#dialog').close();commit('Categoria salva.');return true}
-function handleExperienceAction(a,b){
-  if(a==='privacy'){hideAmounts=!hideAmounts;document.body.classList.toggle('hide-amounts',hideAmounts);render()}
-  else if(a==='category-new')openCategory();
-  else if(a==='category-edit')openCategory(b.dataset.id);
-  else if(a==='category-archive'){const c=catList().find(c=>c.id===b.dataset.id);if(!c)return true;c.archived=!c.archived;commit(c.archived?'Categoria arquivada.':'Categoria reativada.')}
-  else if(a==='category-delete'){const c=catList().find(c=>c.id===b.dataset.id);if(!c)return true;if(CategoryCatalog.used(state,c.name)){toast('Arquive esta categoria para preservar o histórico.');return true}if(confirm('Excluir a categoria '+c.name+'?')){state.categories=catList().filter(x=>x.id!==c.id);commit('Categoria excluída.')}}
-  else if(a==='profile-ledger'){ledgerProfile=b.dataset.id;view='transactions';render()}
-  else if(a==='ledger-page'){ledgerPage=Math.max(0,ledgerPage+Number(b.dataset.offset));render()}
-  else if(a==='clear-filters'){ledgerCategory=ledgerFrequency=ledgerProfile=filter=status='all';query='';ledgerPage=0;render()}
-  else return false;return true;
+function categoriesView() {
+  const all = catList(),
+    list = all.filter((c) => c.name.toLocaleLowerCase("pt-BR").includes(categoryQuery.toLocaleLowerCase("pt-BR"))),
+    entries = F.entries(state, month),
+    active = list.filter((c) => !c.archived),
+    archived = list.filter((c) => c.archived);
+  const tile = (c) => {
+    const own = entries.filter((e) => e.category === c.name),
+      expense = own.filter((e) => e.type === "expense").reduce((a, e) => a + e.value, 0),
+      income = own.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0),
+      used = CategoryCatalog.used(state, c.name);
+    return `<article class="cat-tile ${c.archived ? "archived" : ""}" style="--c:${esc(c.color)}"><div class="cat-top"><span class="cat-swatch">${esc(c.name.slice(0, 1).toUpperCase())}</span><span class="muted">${c.archived ? "Arquivada" : { both: "Receitas e despesas", income: "Receitas", expense: "Despesas" }[c.type]}</span></div><h3>${esc(c.name)}</h3><div class="cat-value">${amount(expense || income)}<small>${own.length} ${own.length === 1 ? "lançamento" : "lançamentos"} em ${esc(monthName(month))}</small></div><div class="cat-actions">${btn("category-edit", "Editar", { id: c.id, cls: "ghost" })}${btn("category-archive", c.archived ? "Reativar" : "Arquivar", { id: c.id, cls: "ghost" })}${!used ? iconBtn("category-delete", "trash", "Excluir categoria " + c.name, c.id, "danger") : ""}</div></article>`;
+  };
+  return `${pageHead("Suas categorias", "Nomes e cores para entender para onde o dinheiro vai. Categorias em uso podem ser arquivadas, mas não excluídas, para não apagar o histórico.", btn("category-new", "Nova categoria", { cls: "primary", icon: "plus" }))}<div class="toolbar-row"><label class="search">${icon("search")}<input id="category-search" type="search" placeholder="Buscar categoria" aria-label="Buscar categoria" value="${esc(categoryQuery)}"></label><span class="muted">${all.filter((c) => !c.archived).length} ativas, ${all.filter((c) => c.archived).length} arquivadas</span></div>${active.length ? `<div class="cat-grid">${active.map(tile).join("")}</div>` : `<article class="panel">${empty("Nenhuma categoria encontrada", "Tente outro nome ou crie uma nova.", "category-new", "Nova categoria")}</article>`}${archived.length ? `<details class="archived-block"><summary>Arquivadas (${archived.length})</summary><div class="cat-grid">${archived.map(tile).join("")}</div></details>` : ""}`;
 }
-document.addEventListener('change',e=>{const keys={'ledger-category':v=>ledgerCategory=v,'ledger-frequency':v=>ledgerFrequency=v,'ledger-profile':v=>ledgerProfile=v};if(keys[e.target.id]){keys[e.target.id](e.target.value);ledgerPage=0;render()}if(e.target.name==='type'&&modal?.kind==='entry'){const el=document.querySelector('select[name="category"]'),value=el?.value;if(el)el.outerHTML=categoryField(value,e.target.value).replace(/^<label[^>]*>Categoria|<\/label>$/g,'')}});
-document.addEventListener('input',e=>{if(e.target.id==='category-search'){const pos=e.target.selectionStart;categoryQuery=e.target.value;render();$('#category-search').focus();$('#category-search').setSelectionRange(pos,pos)}});
-if(typeof matchMedia==='function'){
-  const narrow=matchMedia('(max-width:760px)');let menuWasOpen=false;
-  const syncNavigation=()=>{const app=document.querySelector('.app'),aside=document.querySelector('aside'),workspace=document.querySelector('.workspace');if(!app||!aside||!workspace)return;const open=narrow.matches&&app.classList.contains('nav-open');aside.inert=narrow.matches&&!open;workspace.inert=open;if(open&&!menuWasOpen)aside.querySelector('nav button')?.focus();if(!open&&menuWasOpen)document.querySelector('[data-menu-toggle]')?.focus();menuWasOpen=open};
-  narrow.addEventListener('change',syncNavigation);document.addEventListener('click',()=>queueMicrotask(syncNavigation));document.addEventListener('keydown',e=>{if(e.key==='Escape')queueMicrotask(syncNavigation)});syncNavigation();
+function settingsView() {
+  return `<div class="settings-grid">
+  <article class="panel">${panelHead("Limite de gastos", "Um teto para as despesas de " + esc(mlabel(month)) + ". Cada mês pode ter o seu.")}<div class="inline-form"><span class="money-input"><i aria-hidden="true">R$</i><input id="budget" type="text" inputmode="decimal" autocomplete="off" aria-label="Limite de despesas" value="${esc(F.plain(F.budgetFor(state, month)))}"></span>${btn("budget", "Salvar limite", { cls: "primary" })}</div><div class="row-actions">${btn("month-settings", "Saldo inicial e lembrete do mês", { cls: "link" })}</div></article>
+  <article class="panel">${panelHead("Cópia dos seus dados", "Guarde um arquivo com tudo. Ele restaura seus registros em qualquer aparelho.")}<div class="row-actions">${btn("backup", "Baixar backup", { cls: "primary", icon: "download" })}${btn("import", "Restaurar backup", { icon: "upload" })}${btn("csv", "Planilha do mês (CSV)", { cls: "ghost", icon: "download" })}</div><p class="hint">Restaurar substitui os registros atuais, sempre com confirmação.</p></article>
+  <article class="panel">${panelHead("Privacidade na tela", "Útil para abrir o app em público ou mostrar a tela para alguém.")}<div class="row-actions">${btn("privacy", hideAmounts ? "Mostrar valores" : "Ocultar valores", { icon: hideAmounts ? "eye" : "eyeOff" })}${btn("appearance-page", "Começar sempre oculto", { cls: "link" })}</div><p class="hint">Ocultar borra os valores na tela. Não é criptografia: em computador compartilhado, saia da conta ao terminar.</p></article>
+  <article class="panel">${panelHead("Aparência", "Estilo do vidro, claro ou escuro, cor de destaque.")}<div class="row-actions">${btn("appearance-page", "Abrir o Ateliê visual", { icon: "appearance" })}</div><p class="hint">Estilo atual: <b data-current-style>${AppearanceModel.styles[Appearance.get().style].name}</b>.</p></article>
+  ${ownerTools() ? `<article class="panel">${panelHead("Área do proprietário", "Sua escala de plantões aparece só para a sua conta.")}<div class="row-actions"><button type="button" class="btn" data-view="shifts">${icon("shifts")}Abrir plantões</button></div></article>` : ""}
+  <article class="panel danger-zone">${panelHead("Recomeçar", "Carregue um exemplo para conhecer as funções ou apague os registros desta conta. Baixe um backup antes.")}<div class="row-actions">${btn("demo", "Carregar exemplo", { cls: "ghost" })}${btn("reset", "Apagar todos os registros", { cls: "danger", icon: "trash" })}</div></article>
+  </div>`;
 }
+function openCategory(id) {
+  const c = catList().find((c) => c.id === id);
+  modal = { kind: "category", id };
+  $("#modal-title").textContent = c ? "Editar categoria" : "Nova categoria";
+  $("#fields").innerHTML =
+    field("Nome", "name", "text", c?.name || "", true, 'required maxlength="60" placeholder="Ex.: Casa, Pets, Freelance"') +
+    selectField(
+      "Usar em",
+      "type",
+      [
+        ["both", "Receitas e despesas"],
+        ["expense", "Despesas"],
+        ["income", "Receitas"],
+      ],
+      c?.type || "both",
+    ) +
+    field("Cor", "color", "color", c?.color || CategoryCatalog.palette[catList().length % 6]) +
+    (c ? hint("Mudar o nome atualiza todos os lançamentos que usam esta categoria.") : "");
+  const used = c && CategoryCatalog.used(state, c.name);
+  showDialog({
+    danger: c
+      ? used
+        ? btn("category-archive", c.archived ? "Reativar" : "Arquivar", { id: c.id, cls: "ghost", icon: "archive", attrs: "data-dismiss" })
+        : btn("category-delete", "Excluir", { id: c.id, cls: "danger", icon: "trash", attrs: "data-dismiss" })
+      : "",
+  });
+}
+function submitCategory(e) {
+  if (modal?.kind !== "category") return false;
+  const d = new FormData(e.target),
+    old = catList().find((c) => c.id === modal.id),
+    next = {
+      id: old?.id || uid(),
+      name: String(d.get("name") || "").trim(),
+      type: d.get("type"),
+      color: d.get("color"),
+      archived: old?.archived || false,
+    },
+    categories = old ? catList().map((c) => (c.id === old.id ? next : c)) : [...catList(), next];
+  if (!CategoryCatalog.valid({ categories })) {
+    $("#form-error").textContent = "Use um nome que ainda não existe, com até 60 letras. O limite é de 200 categorias.";
+    return true;
+  }
+  if (old && old.name !== next.name && old.name === "Parcelas" && (state.debts || []).length) {
+    $("#form-error").textContent = "A categoria Parcelas é usada pelas compras parceladas.";
+    return true;
+  }
+  if (old) CategoryCatalog.rename(state, old.name, next.name);
+  state.categories = categories;
+  $("#dialog").close();
+  commit("Categoria salva.");
+  return true;
+}
+function handleExperienceAction(a, b) {
+  if (a === "privacy") {
+    hideAmounts = !hideAmounts;
+    document.body.classList.toggle("hide-amounts", hideAmounts);
+    render();
+  } else if (a === "appearance-page") {
+    view = "appearance";
+    render();
+  } else if (a === "type-filter") {
+    filter = b.dataset.id || "all";
+    ledgerPage = 0;
+    render();
+  } else if (a === "category-new") openCategory();
+  else if (a === "category-edit") openCategory(b.dataset.id);
+  else if (a === "category-archive") {
+    const c = catList().find((c) => c.id === b.dataset.id);
+    if (!c) return true;
+    c.archived = !c.archived;
+    commit(c.archived ? "Categoria arquivada." : "Categoria reativada.");
+  } else if (a === "category-delete") {
+    const c = catList().find((c) => c.id === b.dataset.id);
+    if (!c) return true;
+    if (CategoryCatalog.used(state, c.name)) {
+      toast("Esta categoria tem lançamentos. Arquive para manter o histórico.");
+      return true;
+    }
+    if (confirm("Excluir a categoria " + c.name + "?")) {
+      state.categories = catList().filter((x) => x.id !== c.id);
+      commit("Categoria excluída.");
+    }
+  } else if (a === "profile-ledger") {
+    ledgerProfile = b.dataset.id;
+    view = "transactions";
+    render();
+  } else if (a === "ledger-page") {
+    ledgerPage = Math.max(0, ledgerPage + Number(b.dataset.offset));
+    render();
+  } else if (a === "clear-filters") {
+    ledgerCategory = ledgerFrequency = ledgerProfile = filter = status = "all";
+    query = "";
+    ledgerPage = 0;
+    render();
+  } else return false;
+  return true;
+}
+document.addEventListener("change", (e) => {
+  const keys = {
+    "ledger-category": (v) => (ledgerCategory = v),
+    "ledger-frequency": (v) => (ledgerFrequency = v),
+    "ledger-profile": (v) => (ledgerProfile = v),
+  };
+  if (keys[e.target.id]) {
+    keys[e.target.id](e.target.value);
+    ledgerPage = 0;
+    render();
+  }
+  if (e.target.name === "type" && modal?.kind === "entry") {
+    const el = document.querySelector('#fields select[name="category"]'),
+      value = el?.value,
+      wrap = el?.closest?.(".field");
+    if (wrap) wrap.outerHTML = categoryField(value, e.target.value, true);
+    const done = document.querySelector('#fields input[name="done"] + span');
+    if (done?.firstChild) done.firstChild.textContent = e.target.value === "income" ? "Já recebi neste mês" : "Já paguei neste mês";
+    const title = document.querySelector("#modal-title");
+    if (title && !modal.id) title.textContent = e.target.value === "income" ? "Nova receita" : "Nova despesa";
+  }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.id === "category-search") {
+    const pos = e.target.selectionStart;
+    categoryQuery = e.target.value;
+    render();
+    $("#category-search").focus();
+    $("#category-search").setSelectionRange(pos, pos);
+  }
+});
