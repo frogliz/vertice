@@ -38,7 +38,7 @@ function goalCover(g, size = "") {
     g.image
       ? `<img src="${esc(g.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
       : `<span class="goal-fallback" aria-hidden="true">${esc((g.name.trim()[0] || "?").toUpperCase())}</span>`
-  }${wiki && !size ? '<small class="goal-credit">Foto: Wikimedia Commons</small>' : ""}</div>`;
+  }${wiki && !size ? '<small class="goal-credit">Foto: Wikimedia</small>' : /openverse/.test(g.image || "") && !size ? '<small class="goal-credit">Foto: Openverse</small>' : ""}</div>`;
 }
 function goalCard(g) {
   const x = goalStats(g);
@@ -54,7 +54,7 @@ function goalCard(g) {
       : g.deadline && !x.late
         ? `<p class="goal-pace">Guardando ${amount(x.perMonth)} por mês, você chega até ${esc(mlabel(g.deadline).toLowerCase())}.</p>`
         : `<p class="goal-pace">Toque em Guardar sempre que separar dinheiro. O Vértice calcula quando você chega lá.</p>`;
-  return `<article class="goal-card ${x.done ? "is-done" : ""}">${goalCover(g)}<span class="goal-pct">${x.p}%</span><div class="goal-body"><h3>${esc(g.name)}</h3><div class="goal-amounts">${bigAmount(g.saved, "md")}<span class="muted">de ${amount(g.target)}</span></div>${progress(x.p, x.done ? "var(--pos)" : "")}<dl class="goal-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${pace}<div class="goal-actions">${btn("goal-in", "Guardar", { id: g.id, cls: "primary", icon: "plus" })}${g.saved ? btn("goal-out", "Retirar", { id: g.id, icon: "minus", cls: "ghost" }) : ""}${iconBtn("goal-edit", "edit", "Editar meta " + g.name, g.id)}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></div></article>`;
+  return `<article class="goal-card ${x.done ? "is-done" : ""}">${goalCover(g)}<span class="goal-pct" data-count-pct="${x.p}">${x.p}%</span><div class="goal-body"><h3>${esc(g.name)}</h3><div class="goal-amounts">${bigAmount(g.saved, "md")}<span class="muted">de ${amount(g.target)}</span></div>${progress(x.p, x.done ? "var(--pos)" : "")}<dl class="goal-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${pace}<div class="goal-actions">${btn("goal-in", "Guardar", { id: g.id, cls: "primary", icon: "plus" })}${g.saved ? btn("goal-out", "Retirar", { id: g.id, icon: "minus", cls: "ghost" }) : ""}${iconBtn("goal-edit", "edit", "Editar meta " + g.name, g.id)}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></div></article>`;
 }
 function goals() {
   const list = state.goals,
@@ -67,24 +67,43 @@ function goals() {
   }`;
 }
 function photoChoices(list, current) {
-  return list.length
-    ? list
-        .map(
-          (p) =>
-            `<button type="button" class="photo-choice" data-action="goal-photo-pick" data-src="${esc(p.src)}" aria-pressed="${p.src === current}" title="${esc(p.title)}"><img src="${esc(p.src)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer"></button>`,
-        )
-        .join("")
-    : "";
+  return list
+    .map(
+      (p, i) =>
+        `<button type="button" class="photo-choice" data-action="goal-photo-pick" data-src="${esc(p.src)}" aria-pressed="${p.src === current}" title="${esc(p.title)}" style="--i:${i}"><img src="${esc(p.src)}" alt="${esc(p.title)}" loading="lazy" referrerpolicy="no-referrer">${i === 0 ? '<span class="photo-first">Mais relacionada</span>' : ""}</button>`,
+    )
+    .join("");
 }
 function renderGoalPhoto() {
   const value = $("#goal-image")?.value || "",
     box = $("#goal-photos"),
-    preview = $("#goal-photo-preview");
+    preview = $("#goal-photo-preview"),
+    status = $("#goal-photo-status"),
+    more = $("#goal-photo-more"),
+    photos = modal?.photos || [],
+    visible = modal?.showAll ? photos : photos.slice(0, 12);
   if (preview)
     preview.innerHTML = value
-      ? `<img src="${esc(value)}" alt="" referrerpolicy="no-referrer">`
+      ? `<img src="${esc(value)}" alt="" referrerpolicy="no-referrer"><span class="photo-badge">${icon("check")}Escolhida</span>`
       : `<span class="goal-fallback" aria-hidden="true">${esc((($("#goal-name")?.value || "?").trim()[0] || "?").toUpperCase())}</span>`;
-  if (box) box.innerHTML = photoChoices(modal?.photos || [], value) || `<p class="hint">${modal?.searching ? "Procurando fotos…" : modal?.searched ? "Nenhuma foto encontrada para esse nome. Envie uma sua, se quiser." : "Escreva o nome da meta para ver sugestões de foto."}</p>`;
+  if (status)
+    status.textContent = modal?.searching
+      ? "Procurando fotos…"
+      : photos.length
+        ? modal.autoImage
+          ? `${photos.length} fotos encontradas. Toque em uma para escolher; se não escolher, fica a primeira.`
+          : `${photos.length} fotos encontradas. Toque em outra para trocar.`
+        : modal?.searched
+          ? "Nenhuma foto encontrada. Tente outra palavra, em português ou inglês, ou envie uma sua."
+          : "Escreva o nome da meta e as fotos aparecem aqui.";
+  if (box)
+    box.innerHTML = modal?.searching
+      ? Array.from({ length: 8 }, () => '<span class="photo-skeleton" aria-hidden="true"></span>').join("")
+      : photoChoices(visible, value);
+  if (more) {
+    more.hidden = modal?.searching || modal?.showAll || photos.length <= 12;
+    more.textContent = `Mostrar mais ${photos.length - 12} fotos`;
+  }
 }
 function openGoal(id) {
   const g = state.goals.find((g) => g.id === id);
@@ -95,7 +114,7 @@ function openGoal(id) {
     moneyField("Quanto custa", "target", g ? g.target : "", false, "required") +
     moneyField("Quanto já tem guardado", "saved", g ? g.saved : 0, false, "required") +
     field("Até quando (opcional)", "deadline", "month", g?.deadline || "", true) +
-    `<div class="full goal-photo"><span class="field-label">Foto da meta</span><div class="goal-photo-row"><div class="goal-photo-preview" id="goal-photo-preview"></div><div class="photo-picker" id="goal-photos"></div></div><div class="row-actions">${btn("goal-photo-search", "Buscar fotos", { cls: "ghost", icon: "search" })}<label class="btn ghost">${icon("upload")}Enviar foto<input type="file" accept="image/*" id="goal-photo-file" hidden></label>${btn("goal-photo-none", "Sem foto", { cls: "ghost" })}</div><input type="hidden" name="image" id="goal-image" value="${esc(g?.image || "")}"><p class="hint">As sugestões vêm da Wikipédia. A foto que você enviar fica só na sua conta.</p></div>`;
+    `<div class="full goal-photo"><div class="goal-photo-top"><div class="goal-photo-preview" id="goal-photo-preview"></div><div class="goal-photo-search"><span class="field-label">Foto da meta</span><label class="search">${icon("search")}<input id="goal-photo-q" type="search" placeholder="Procurar foto, ex.: PS5" aria-label="Procurar foto" value="${esc(g?.name || "")}" autocomplete="off"></label><p class="hint" id="goal-photo-status" role="status"></p><div class="row-actions"><label class="btn ghost">${icon("upload")}Enviar foto<input type="file" accept="image/*" id="goal-photo-file" hidden></label>${btn("goal-photo-none", "Sem foto", { cls: "ghost" })}</div></div></div><div class="photo-picker" id="goal-photos"></div><button type="button" class="btn ghost photo-more" id="goal-photo-more" data-action="goal-photo-more" hidden>Mostrar mais fotos</button><input type="hidden" name="image" id="goal-image" value="${esc(g?.image || "")}"><p class="hint">Fotos da Wikipédia, do Wikimedia Commons e do Openverse, todas de uso livre. A foto que você enviar fica só na sua conta.</p></div>`;
   showDialog({ danger: g ? btn("goal-delete", "Excluir", { id: g.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
   renderGoalPhoto();
   if (g?.name) searchGoalPhotos(g.name);
@@ -112,34 +131,63 @@ function openGoalMove(id, dir) {
     hint(dir === "in" ? "Isso só atualiza a meta. Para tirar o valor do saldo do mês, registre também uma despesa ou use Reservas." : "O valor sai da meta e entra no histórico dela.");
   showDialog({ submit: dir === "in" ? "Guardar" : "Retirar" });
 }
-// Busca na Wikipédia (português e, se faltar, inglês). Só aceita imagens de upload.wikimedia.org.
+// Fotos sem chave de API, de três fontes, nesta ordem: foto principal da Wikipédia (a mais certeira),
+// acervo do Wikimedia Commons e Openverse (fotos livres do Flickr e outros). Só aceita endereços conhecidos.
+const PHOTO_OK = /^(https:\/\/upload\.wikimedia\.org\/[^\s"'<>()\\]+|https:\/\/api\.openverse\.org\/v1\/images\/[0-9a-f-]{36}\/thumb\/)$/;
+async function getJSON(url) {
+  const res = await fetch(url, { referrerPolicy: "no-referrer" });
+  if (!res.ok) throw Error("HTTP " + res.status);
+  return res.json();
+}
+async function wikipediaPhotos(q, lang) {
+  const data = await getJSON(`https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=10&gsrsearch=${encodeURIComponent(q)}&prop=pageimages&piprop=thumbnail&pithumbsize=640&pilimit=10`);
+  return Object.values(data?.query?.pages || {})
+    .sort((a, b) => a.index - b.index)
+    .map((p) => ({ src: p.thumbnail?.source, title: p.title }));
+}
+async function commonsPhotos(q) {
+  const data = await getJSON(`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24&gsrsearch=${encodeURIComponent(q + " filetype:bitmap")}&prop=imageinfo&iiprop=url|mime&iiurlwidth=640`);
+  return Object.values(data?.query?.pages || {})
+    .sort((a, b) => a.index - b.index)
+    .filter((p) => /^image\/(jpeg|png|webp)$/.test(p.imageinfo?.[0]?.mime || ""))
+    .map((p) => ({ src: p.imageinfo[0].thumburl, title: String(p.title || "").replace(/^File:|\.[a-z]+$/gi, "") }));
+}
+async function openversePhotos(q) {
+  const data = await getJSON(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=20&mature=false`);
+  return (data?.results || []).map((r) => ({ src: r.thumbnail, title: r.title }));
+}
 async function findGoalPhotos(term) {
   const q = String(term || "").trim();
   if (q.length < 2 || typeof fetch !== "function") return [];
   const out = [],
-    seen = new Set();
-  for (const lang of ["pt", "en"]) {
-    try {
-      const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=8&gsrsearch=${encodeURIComponent(q)}&prop=pageimages&piprop=thumbnail&pithumbsize=640`;
-      const res = await fetch(url, { referrerPolicy: "no-referrer" });
-      if (!res.ok) continue;
-      const pages = Object.values((await res.json())?.query?.pages || {}).sort((a, b) => a.index - b.index);
-      for (const p of pages) {
-        const src = p.thumbnail?.source;
-        if (src && /^https:\/\/upload\.wikimedia\.org\/[^\s"'<>()\\]+$/.test(src) && src.length <= 500 && !seen.has(src)) {
-          seen.add(src);
-          out.push({ src, title: String(p.title || "").slice(0, 120) });
+    seen = new Set(),
+    add = (list) => {
+      for (const p of list || [])
+        if (p.src && p.src.length <= 500 && PHOTO_OK.test(p.src) && !seen.has(p.src)) {
+          seen.add(p.src);
+          out.push({ src: p.src, title: String(p.title || q).slice(0, 120) });
         }
-      }
-    } catch (_) {}
-    if (out.length >= 6) break;
-  }
-  return out.slice(0, 6);
+    };
+  const settle = (promise) => promise.then((v) => v, () => []);
+  const [pt, en, commons, openverse] = await Promise.all([
+    settle(wikipediaPhotos(q, "pt")),
+    settle(wikipediaPhotos(q, "en")),
+    settle(commonsPhotos(q)),
+    settle(openversePhotos(q)),
+  ]);
+  add(pt.slice(0, 3));
+  add(en.slice(0, 3));
+  add(commons);
+  add(openverse);
+  add(pt);
+  add(en);
+  return out.slice(0, 24);
 }
 async function searchGoalPhotos(term) {
   if (modal?.kind !== "goal") return;
   const seq = ++goalSearchSeq;
   modal.searching = true;
+  modal.showAll = false;
   renderGoalPhoto();
   const photos = await findGoalPhotos(term);
   if (seq !== goalSearchSeq || modal?.kind !== "goal") return;
@@ -225,10 +273,24 @@ function submitGoals(e) {
   if (!goal.image) delete goal.image;
   const candidate = { ...state, goals: old ? state.goals.map((g) => (g.id === old.id ? goal : g)) : [...state.goals, goal] };
   if (!F.valid(candidate)) return fail("Confira os valores, o prazo e o limite de 500 metas.");
+  const autoFill = !goal.image && modal.autoImage,
+    query = String($("#goal-photo-q")?.value || goal.name).trim() || goal.name;
   state.goals = candidate.goals;
   $("#dialog").close();
   commit(old ? "Meta atualizada." : "Meta criada.");
+  if (autoFill) fillGoalPhoto(goal.id, query);
   return true;
+}
+// Sem escolha da pessoa, a meta fica com a primeira foto relacionada, assim que a busca responder.
+async function fillGoalPhoto(id, query) {
+  const photos = await findGoalPhotos(query),
+    g = state.goals.find((x) => x.id === id);
+  if (!g || g.image || !photos[0]) return;
+  const next = { ...g, image: photos[0].src },
+    candidate = { ...state, goals: state.goals.map((x) => (x.id === id ? next : x)) };
+  if (!F.valid(candidate)) return;
+  state.goals = candidate.goals;
+  commit("Foto da meta adicionada.");
 }
 function handleGoalAction(a, b) {
   const id = b.dataset.id;
@@ -243,7 +305,10 @@ function handleGoalAction(a, b) {
     }
   } else if (a === "goal-photo-search") {
     if (modal) modal.autoImage = !$("#goal-image").value;
-    searchGoalPhotos($("#goal-name").value);
+    searchGoalPhotos($("#goal-photo-q").value);
+  } else if (a === "goal-photo-more") {
+    modal.showAll = true;
+    renderGoalPhoto();
   } else if (a === "goal-photo-pick") {
     $("#goal-image").value = b.dataset.src;
     modal.autoImage = false;
@@ -256,12 +321,31 @@ function handleGoalAction(a, b) {
   return true;
 }
 document.addEventListener("input", (e) => {
-  if (e.target.id !== "goal-name" || modal?.kind !== "goal") return;
+  if (modal?.kind !== "goal" || !["goal-name", "goal-photo-q"].includes(e.target.id)) return;
+  if (e.target.id === "goal-photo-q") modal.customQuery = true;
+  else if (!modal.customQuery && $("#goal-photo-q")) $("#goal-photo-q").value = e.target.value;
+  if (!$("#goal-image").value || modal.autoImage) modal.autoImage = true;
   clearTimeout(goalSearchTimer);
-  const term = e.target.value;
-  goalSearchTimer = setTimeout(() => searchGoalPhotos(term), 650);
-  if (!$("#goal-image").value) renderGoalPhoto();
+  const term = $("#goal-photo-q")?.value || e.target.value;
+  goalSearchTimer = setTimeout(() => searchGoalPhotos(term), 550);
+  renderGoalPhoto();
 });
+// Foto que não carregou some da lista; se era a escolhida automaticamente, passa para a próxima.
+document.addEventListener(
+  "error",
+  (e) => {
+    const img = e.target;
+    if (img?.tagName !== "IMG") return;
+    const choice = img.closest?.(".photo-choice");
+    if (choice && modal?.kind === "goal") {
+      const src = choice.dataset.src;
+      modal.photos = (modal.photos || []).filter((p) => p.src !== src);
+      if ($("#goal-image").value === src && modal.autoImage) $("#goal-image").value = modal.photos[0]?.src || "";
+      renderGoalPhoto();
+    } else if (img.closest?.(".goal-cover")) img.replaceWith(Object.assign(document.createElement("span"), { className: "goal-fallback", textContent: "•" }));
+  },
+  true,
+);
 document.addEventListener("change", async (e) => {
   if (e.target.id !== "goal-photo-file") return;
   try {

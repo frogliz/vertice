@@ -225,4 +225,13 @@ test("Aparelho fraco é reconhecido para indicar o modo leve", () => {
   assert.equal(c.run("AppearanceModel.weakDevice({ deviceMemory: 2, hardwareConcurrency: 8 })"), true);
   assert.equal(c.run("AppearanceModel.weakDevice({ hardwareConcurrency: 12, deviceMemory: 8 })"), false);
 });
+test("Animações só ligam com vidro completo e movimento suave", () => {
+  const c = setup();
+  c.run("Appearance.set({ performance: 'full', motion: true })");
+  assert.equal(c.root.dataset.fx, "on");
+  c.run("Appearance.set({ motion: false })");
+  assert.equal(c.root.dataset.fx, "off");
+  c.run("Appearance.set({ motion: true, performance: 'lite' })");
+  assert.equal(c.root.dataset.fx, "off");
+});
 console.log(`${checks} verificações de aparência passaram.`);

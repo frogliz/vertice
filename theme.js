@@ -11,7 +11,8 @@ const Appearance = (() => {
     prefs = M.normalize(legacy),
     onChange = null,
     lastSaved = true;
-  const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : null;
+  const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: light)") : null,
+    reduceMotion = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
   const safe = (v) =>
     String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const all = (s) => document.querySelectorAll(s);
@@ -63,6 +64,7 @@ const Appearance = (() => {
     root.dataset.density = prefs.density;
     root.dataset.motion = prefs.motion ? "on" : "off";
     root.dataset.perf = prefs.performance;
+    root.dataset.fx = prefs.performance === "full" && prefs.motion && !reduceMotion?.matches ? "on" : "off";
     root.style.setProperty("--accent", hex);
     root.style.setProperty("--accent-rgb", rgb.join(","));
     root.style.setProperty("--accent-readable", "rgb(" + readable.join(",") + ")");

@@ -39,8 +39,11 @@ const isLate = (e) => !e.done && e.date < today();
 function amount(v, cls = "", sign = "") {
   return `<span class="amount ${cls}" data-private>${sign}${esc(F.money(v))}</span>`;
 }
-// Valor grande: símbolo e centavos menores, número largo.
+// Valor grande: símbolo e centavos menores, número largo. data-count-cents permite a contagem animada.
 function bigAmount(v, cls = "") {
+  return `<span class="big-amount ${cls}" data-private data-count-cents="${v}">${bigAmountInner(v)}</span>`;
+}
+function bigAmountInner(v) {
   const parts = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).formatToParts(v / 100);
   let html = "";
   for (const p of parts) {
@@ -50,7 +53,29 @@ function bigAmount(v, cls = "") {
     else if (p.type === "minusSign") html += `<span class="minus">−</span>`;
     else html += esc(p.value);
   }
-  return `<span class="big-amount ${cls}" data-private>${html}</span>`;
+  return html;
+}
+// Efeitos da versão completa: só com o vidro completo, movimento ligado e sem pedido de menos movimento.
+const fxOn = () => document.documentElement?.dataset?.fx === "on";
+function runEntrance(main) {
+  if (!fxOn() || typeof main.querySelectorAll !== "function") return;
+  main
+    .querySelectorAll(".panel, .goal-card, .cat-tile, .year-card, .summary-strip > div, .lens, .person, .month-note, .tx-day")
+    .forEach((el, i) => el.style.setProperty("--stagger", Math.min(i, 14)));
+  const items = [...main.querySelectorAll("[data-count-cents], [data-count-pct]")].slice(0, 40);
+  if (!items.length || typeof requestAnimationFrame !== "function") return;
+  const start = performance.now(),
+    dur = 1100,
+    ease = (t) => 1 - Math.pow(1 - t, 4);
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur),
+      k = ease(t);
+    for (const el of items)
+      if (el.dataset.countCents !== undefined) el.innerHTML = bigAmountInner(Math.round(Number(el.dataset.countCents) * k));
+      else el.textContent = Math.round(Number(el.dataset.countPct) * k) + "%";
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 function field(label, name, type, value, full = false, extra = "") {
   return `<label class="field ${full ? "full" : ""}"><span class="field-label">${label}</span><input name="${name}" type="${type}" value="${esc(value ?? "")}" ${extra}></label>`;

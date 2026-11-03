@@ -227,7 +227,8 @@
         (typeof v === "string" &&
           v.length <= max &&
           (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ||
-            /^https:\/\/upload\.wikimedia\.org\/[^\s"'<>()\\]+$/.test(v)));
+            /^https:\/\/upload\.wikimedia\.org\/[^\s"'<>()\\]+$/.test(v) ||
+            /^https:\/\/api\.openverse\.org\/v1\/images\/[0-9a-f-]{36}\/thumb\/$/.test(v)));
       const goalsOk = s.goals.every(
         (g) =>
           photo(g.image, 160000) &&

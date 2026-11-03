@@ -994,7 +994,7 @@ test("Meta: salva foto escolhida e prazo; rejeita foto de site desconhecido", ()
   assert.equal(run("state.goals[0].image"), img);
   run("view='goals';render()");
   assert.ok(run("$('#main').innerHTML").includes(img));
-  assert.ok(run("$('#main').innerHTML").includes("Wikimedia Commons"));
+  assert.ok(run("$('#main').innerHTML").includes("Foto: Wikimedia"));
 });
 test("Meta antiga, sem foto nem prazo, continua aparecendo e editável", () => {
   const { run } = context();
@@ -1022,4 +1022,66 @@ test("Configurações mostram perfil e a troca entre vidro completo e modo leve"
   const html = run("$('#main').innerHTML");
   assert.ok(html.includes("Seu perfil") && html.includes('data-theme-perf="lite"') && html.includes("profile-photo-file"));
 });
-console.log(`${checks} verificações passaram.`);
+
+const asyncTests = [];
+const atest = (name, fn) => asyncTests.push(async () => {
+  await fn();
+  checks++;
+  console.log("OK " + name);
+});
+const fakeFetch = `globalThis.fetch = async (url) => {
+  const u = String(url), json = (data) => ({ ok: true, json: async () => data });
+  if (u.includes("pt.wikipedia.org")) return json({ query: { pages: { 1: { index: 1, title: "PlayStation 5", thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/thumb/ps5.png/640px-ps5.png" } }, 2: { index: 2, title: "Sem foto" } } } });
+  if (u.includes("en.wikipedia.org")) return json({ query: { pages: { 7: { index: 1, title: "PlayStation 5", thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/thumb/ps5.png/640px-ps5.png" } } } } });
+  if (u.includes("commons.wikimedia.org")) return json({ query: { pages: {
+    3: { index: 2, title: "File:PS5 controle.jpg", imageinfo: [{ mime: "image/jpeg", thumburl: "https://upload.wikimedia.org/c/controle.jpg" }] },
+    4: { index: 1, title: "File:PS5 console.jpg", imageinfo: [{ mime: "image/jpeg", thumburl: "https://upload.wikimedia.org/c/console.jpg" }] },
+    5: { index: 3, title: "File:logo.svg", imageinfo: [{ mime: "image/svg+xml", thumburl: "https://upload.wikimedia.org/c/logo.png" }] } } } });
+  if (u.includes("api.openverse.org")) return json({ results: [
+    { title: "PS5 na sala", thumbnail: "https://api.openverse.org/v1/images/0f3e9a8c-1111-4222-8333-444455556666/thumb/" },
+    { title: "Fora da lista", thumbnail: "https://site-estranho.com/x.jpg" } ] });
+  return { ok: false };
+};`;
+atest("Fotos da meta: junta Wikipédia, Commons e Openverse, sem repetir e só de endereços seguros", async () => {
+  const { run } = context();
+  run(fakeFetch);
+  const list = await run("findGoalPhotos('PS5')");
+  const srcs = list.map((p) => p.src);
+  assert.equal(srcs[0], "https://upload.wikimedia.org/wikipedia/commons/thumb/ps5.png/640px-ps5.png");
+  assert.equal(srcs.length, 4);
+  assert.equal(srcs[1], "https://upload.wikimedia.org/c/console.jpg");
+  assert.ok(srcs.includes("https://api.openverse.org/v1/images/0f3e9a8c-1111-4222-8333-444455556666/thumb/"));
+  assert.ok(!srcs.some((x) => x.includes("estranho") || x.includes("logo")));
+});
+atest("Fotos da meta: se a pessoa não escolher, a meta fica com a primeira relacionada", async () => {
+  const { run } = context();
+  run(fakeFetch);
+  run("openGoal()");
+  run("$('#goal-photo-q').value='PS5'");
+  run(`$('#form').listeners.submit({preventDefault(){},target:{name:'PS5',target:'4.500,00',saved:'0',deadline:'',image:''}})`);
+  assert.equal(run("state.goals[0].image"), undefined);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(run("state.goals[0].image"), "https://upload.wikimedia.org/wikipedia/commons/thumb/ps5.png/640px-ps5.png");
+  assert.ok(run("Finance.valid(state)"));
+});
+atest("Fotos da meta: 'Sem foto' é respeitado e não busca sozinho", async () => {
+  const { run } = context();
+  run(fakeFetch);
+  run("openGoal();handleGoalAction('goal-photo-none',{dataset:{}})");
+  run(`$('#form').listeners.submit({preventDefault(){},target:{name:'PS5',target:'100',saved:'0',deadline:'',image:''}})`);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(run("state.goals[0].image"), undefined);
+});
+test("Foto do Openverse só é aceita no formato da miniatura oficial", () => {
+  const mk = (image) => ({ version: 1, entries: [], shifts: [], shiftPaid: [], holidays: [], paid: {}, budget: 0, categories: [], goals: [{ id: "g", name: "x", target: 1, saved: 0, image }] });
+  assert.ok(F.valid(mk("https://api.openverse.org/v1/images/0f3e9a8c-1111-4222-8333-444455556666/thumb/")));
+  assert.ok(!F.valid(mk("https://api.openverse.org/v1/images/../../etc/thumb/")));
+  assert.ok(!F.valid(mk("https://api.openverse.org/v1/images/?q=x")));
+});
+(async () => {
+  for (const t of asyncTests) await t();
+  console.log(`${checks} verificações passaram.`);
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

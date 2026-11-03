@@ -1,5 +1,11 @@
 # O que mudou
 
+## Versão de 03/11/2026 (tarde)
+- **Mais animações na versão completa**: os números contam até o valor, as barras crescem e ganham um brilho que passa, o fundo tem luzes que flutuam, os cartões entram em sequência, sobem e acendem onde o mouse passa, as faixas de aviso ganham reflexo, o gráfico se desenha sozinho, a pizza gira ao entrar e as barras do ano sobem. Uma barra colorida no topo mostra quando está salvando.
+- No **modo leve** nada disso roda, e também não roda se a pessoa desligar o "Movimento suave" ou se o aparelho pedir menos movimento.
+- **Muito mais fotos nas metas**: busca na Wikipédia, no Wikimedia Commons e no Openverse ao mesmo tempo, com até 24 fotos. Elas aparecem logo abaixo enquanto você digita, com um campo para procurar outra palavra.
+- **Se a pessoa não escolher, fica a primeira foto relacionada**, mesmo se ela salvar antes de a busca terminar.
+
 ## Versão de 03/11/2026
 - **Backup automático** dos dados de todos os usuários, duas vezes por dia, com 30 dias de histórico e restauração com um comando. Veja `database/BACKUP.md`.
 - **Modo leve** para computador simples e celular: o mesmo visual, sem os efeitos que pesam. Dá para trocar a qualquer momento no Ateliê visual ou em Configurações.

@@ -133,6 +133,7 @@ const Account = (() => {
   }
   function status(info) {
     node("#save-status").textContent = info.message;
+    document.body.classList?.toggle("is-syncing", ["syncing", "pending"].includes(info.kind));
     const banner = node("#cloud-notice"),
       warning = ["conflict", "offline", "warning"].includes(info.kind);
     banner.hidden = !warning;

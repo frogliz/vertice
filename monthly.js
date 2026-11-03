@@ -30,7 +30,7 @@ function yearBars(rows) {
         hi = (t.income / max) * (h - 6),
         he = (t.expense / max) * (h - 6),
         sel = t.m === month;
-      return `<g class="${sel ? "sel" : ""}"><rect x="${(x - 13).toFixed(1)}" y="${(h - hi).toFixed(1)}" width="11" height="${Math.max(1.5, hi).toFixed(1)}" rx="5.5" class="bar-in"/><rect x="${(x + 2).toFixed(1)}" y="${(h - he).toFixed(1)}" width="11" height="${Math.max(1.5, he).toFixed(1)}" rx="5.5" class="bar-out"/><text x="${x.toFixed(1)}" y="${h + 20}" text-anchor="middle">${monthName(t.m, "short")}</text><rect x="${(x - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${h + 26}" fill="transparent" data-action="jump-month" data-month="${t.m}"><title>${esc(mlabel(t.m))}: receitas ${esc(F.money(t.income))}, despesas ${esc(F.money(t.expense))}</title></rect></g>`;
+      return `<g class="${sel ? "sel" : ""}" style="--i:${i}"><rect x="${(x - 13).toFixed(1)}" y="${(h - hi).toFixed(1)}" width="11" height="${Math.max(1.5, hi).toFixed(1)}" rx="5.5" class="bar-in"/><rect x="${(x + 2).toFixed(1)}" y="${(h - he).toFixed(1)}" width="11" height="${Math.max(1.5, he).toFixed(1)}" rx="5.5" class="bar-out"/><text x="${x.toFixed(1)}" y="${h + 20}" text-anchor="middle">${monthName(t.m, "short")}</text><rect x="${(x - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${h + 26}" fill="transparent" data-action="jump-month" data-month="${t.m}"><title>${esc(mlabel(t.m))}: receitas ${esc(F.money(t.income))}, despesas ${esc(F.money(t.expense))}</title></rect></g>`;
     })
     .join("")}</svg>`;
 }

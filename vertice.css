@@ -3500,18 +3500,30 @@ body[data-auth="pending"] .auth-screen {
   flex: none;
   background: #fff;
 }
-.goal-photo-row {
+.goal-photo-top {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
+}
+.goal-photo-search {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.goal-photo-search .row-actions {
+  margin-top: 0;
+}
+.goal-photo-search .search input {
+  height: 42px;
 }
 .goal-photo-preview {
   position: relative;
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--spectrum-line);
+  box-shadow: 0 12px 26px -16px rgba(0, 0, 0, 0.45);
 }
 .goal-photo-preview img {
   width: 100%;
@@ -3522,16 +3534,53 @@ body[data-auth="pending"] .auth-screen {
 .goal-photo-preview .goal-fallback {
   font-size: 40px;
 }
+.photo-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 640;
+}
+.photo-badge .i {
+  width: 13px;
+  height: 13px;
+}
 .photo-picker {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
+  margin-top: 12px;
 }
-.photo-picker .hint {
-  grid-column: 1 / -1;
-  align-self: center;
+.photo-picker:empty {
+  display: none;
+}
+.photo-more {
+  width: 100%;
+  margin-top: 10px;
+}
+.photo-first {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 640;
+  text-align: center;
+  line-height: 1.3;
 }
 .photo-choice {
+  position: relative;
   aspect-ratio: 1;
   padding: 0;
   overflow: hidden;
@@ -3827,8 +3876,11 @@ body[data-auth="pending"] .auth-screen {
   .goals-empty {
     grid-template-columns: minmax(0, 1fr);
   }
-  .goal-photo-row {
-    grid-template-columns: 88px minmax(0, 1fr);
+  .goal-photo-top {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+  .photo-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .profile-edit {
     flex-direction: column;
@@ -3850,6 +3902,397 @@ body[data-auth="pending"] .auth-screen {
   .perf-preview {
     height: 72px;
   }
+}
+
+
+/* ===== Versão completa: animações =====
+   Ligadas só com data-fx="on" (vidro completo + movimento suave + sem pedido de menos movimento).
+   As de entrada rodam quando a tela ou o mês muda (#main.page-enter), não a cada clique. */
+
+/* Fundo vivo: duas luzes que flutuam devagar atrás do vidro */
+.backdrop::before,
+.backdrop::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+[data-fx="on"] .backdrop::before {
+  opacity: 1;
+  width: 48vmax;
+  height: 48vmax;
+  left: -12vmax;
+  top: 16vh;
+  background: radial-gradient(circle, rgba(186, 166, 255, 0.55), transparent 66%);
+  animation: orb-a 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+[data-fx="on"] .backdrop::after {
+  opacity: 1;
+  width: 42vmax;
+  height: 42vmax;
+  right: -10vmax;
+  bottom: -12vmax;
+  background: radial-gradient(circle, rgba(255, 168, 214, 0.45), transparent 66%);
+  animation: orb-b 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+[data-fx="on"][data-theme="dark"] .backdrop::before {
+  background: radial-gradient(circle, rgba(130, 100, 255, 0.3), transparent 66%);
+}
+[data-fx="on"][data-theme="dark"] .backdrop::after {
+  background: radial-gradient(circle, rgba(255, 110, 190, 0.18), transparent 66%);
+}
+[data-fx="on"][data-style="editorial"] .backdrop::before,
+[data-fx="on"][data-style="editorial"] .backdrop::after {
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.28), transparent 66%);
+}
+[data-fx="on"][data-style="precision"] .backdrop::before,
+[data-fx="on"][data-style="precision"] .backdrop::after {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7), transparent 66%);
+}
+[data-fx="on"][data-theme="dark"][data-style="precision"] .backdrop::before,
+[data-fx="on"][data-theme="dark"][data-style="precision"] .backdrop::after {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.07), transparent 66%);
+}
+@keyframes orb-a {
+  to {
+    transform: translate(40vw, -14vh) scale(1.2);
+  }
+}
+@keyframes orb-b {
+  to {
+    transform: translate(-32vw, -28vh) scale(0.85);
+  }
+}
+
+/* Cartões entram em sequência */
+[data-fx="on"] #main.page-enter {
+  animation: none;
+}
+[data-fx="on"] #main.page-enter :is(.panel, .goal-card, .cat-tile, .year-card, .summary-strip > div, .lens, .person, .month-note, .tx-day) {
+  animation: card-in 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--stagger, 0) * 55ms);
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+}
+[data-fx="on"] #main.page-enter .tx {
+  animation: row-in 0.5s ease both;
+  animation-delay: calc(var(--stagger, 0) * 55ms + 120ms);
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+/* Barras: crescem do zero e ganham um brilho que passa de tempos em tempos */
+[data-fx="on"] .progress span {
+  position: relative;
+  overflow: hidden;
+}
+[data-fx="on"] #main.page-enter .progress span {
+  transform-origin: left center;
+  animation: bar-grow 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--stagger, 0) * 55ms + 250ms);
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+[data-fx="on"] .progress span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  transform: translateX(-100%);
+  animation: bar-shine 3.4s ease-in-out infinite 1.6s;
+}
+[data-fx="on"][data-theme="dark"] .progress span::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+}
+@keyframes bar-shine {
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Anéis de porcentagem, gráfico de linha, barras do ano e pizza */
+[data-fx="on"] #main.page-enter .ring-value {
+  animation: ring-in 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.25s;
+}
+@keyframes ring-in {
+  from {
+    stroke-dasharray: 0 999;
+  }
+}
+[data-fx="on"] #main.page-enter :is(.line-ink, .line-halo) {
+  stroke-dasharray: 1;
+  animation: draw 1.7s cubic-bezier(0.4, 0, 0.2, 1) both 0.3s;
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+[data-fx="on"] #main.page-enter .line-chart path[fill^="url"] {
+  animation: fade-in 1.2s ease both 0.8s;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+[data-fx="on"] .line-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dot-pulse 2.6s ease-in-out infinite 2s;
+}
+[data-fx="on"] #main.page-enter .line-dot {
+  animation: pop 0.6s cubic-bezier(0.3, 1.6, 0.5, 1) both 1.7s, dot-pulse 2.6s ease-in-out infinite 2.4s;
+}
+@keyframes pop {
+  from {
+    transform: scale(0);
+  }
+}
+@keyframes dot-pulse {
+  50% {
+    transform: scale(1.35);
+  }
+}
+[data-fx="on"] #main.page-enter .year-bars :is(.bar-in, .bar-out) {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-up 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 50ms + 200ms);
+}
+@keyframes bar-up {
+  from {
+    transform: scaleY(0);
+  }
+}
+[data-fx="on"] #main.page-enter .donut {
+  animation: donut-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.25s;
+}
+[data-fx="on"] #main.page-enter .donut > div {
+  animation: donut-center 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.25s;
+}
+@keyframes donut-in {
+  from {
+    opacity: 0;
+    transform: rotate(-150deg) scale(0.85);
+  }
+}
+@keyframes donut-center {
+  from {
+    transform: rotate(150deg);
+  }
+}
+
+/* Cartão principal: a borda colorida corre devagar */
+[data-fx="on"] .lens::before {
+  background-size: 240% 100%;
+  animation: rim 10s linear infinite alternate;
+}
+@keyframes rim {
+  to {
+    background-position: 100% 0;
+  }
+}
+
+/* Cartões: sobem um pouco e acendem onde o mouse passa */
+[data-fx="on"] :is(.goal-card, .cat-tile, .year-card, .person, .stat, .fund-card) {
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s;
+}
+@media (hover: hover) {
+  [data-fx="on"] :is(.goal-card, .cat-tile, .year-card, .person, .stat, .fund-card):hover {
+    transform: translateY(-4px);
+    box-shadow: var(--glass-shadow), 0 30px 60px -30px rgba(var(--accent-rgb), 0.45);
+  }
+  [data-fx="on"] :is(.panel, .goal-card, .cat-tile, .year-card) {
+    background-image: radial-gradient(480px circle at var(--mx, -999px) var(--my, -999px), rgba(255, 255, 255, 0.35), transparent 42%);
+  }
+  [data-fx="on"][data-theme="dark"] :is(.panel, .goal-card, .cat-tile, .year-card) {
+    background-image: radial-gradient(480px circle at var(--mx, -999px) var(--my, -999px), rgba(255, 255, 255, 0.07), transparent 42%);
+  }
+  [data-fx="on"] .goal-card:hover .goal-cover img {
+    transform: scale(1.07);
+  }
+}
+[data-fx="on"] .goal-cover img {
+  transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-fx="on"] .goal-card.is-done .goal-pct {
+  animation: done-pulse 2.4s ease-in-out infinite;
+}
+@keyframes done-pulse {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--pos) 28%, transparent);
+  }
+}
+
+/* Faixas e avisos: um reflexo atravessa de tempos em tempos */
+[data-fx="on"] :is(.banner, .month-note) {
+  position: relative;
+  overflow: hidden;
+}
+[data-fx="on"] :is(.banner, .month-note)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.5) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: sweep 7s ease-in-out infinite 1.2s;
+}
+[data-fx="on"][data-theme="dark"] :is(.banner, .month-note)::after {
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.09) 50%, transparent 70%);
+}
+@keyframes sweep {
+  35%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Botões principais: reflexo ao passar o mouse; botão + do celular respira */
+[data-fx="on"] .btn.primary {
+  position: relative;
+  overflow: hidden;
+}
+[data-fx="on"] .btn.primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%);
+  transform: translateX(-120%);
+}
+[data-fx="on"] .btn.primary:hover::after {
+  transform: translateX(120%);
+  transition: transform 0.75s ease;
+}
+[data-fx="on"] .tabbar .tab-new {
+  animation: glow 3.4s ease-in-out infinite;
+}
+@keyframes glow {
+  50% {
+    box-shadow: 0 16px 38px -6px rgba(var(--accent-rgb), 1), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+}
+
+/* Fotos da meta: carregando e chegando */
+.photo-skeleton {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: var(--seg-bg);
+  position: relative;
+  overflow: hidden;
+}
+.photo-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+}
+[data-fx="on"] .photo-skeleton::after {
+  animation: skeleton 1.2s ease-in-out infinite;
+}
+[data-theme="dark"] .photo-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+@keyframes skeleton {
+  to {
+    transform: translateX(100%);
+  }
+}
+[data-fx="on"] .photo-choice {
+  animation: card-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+[data-fx="on"] .photo-choice img {
+  transition: transform 0.4s ease;
+}
+[data-fx="on"] .photo-choice:hover img {
+  transform: scale(1.08);
+}
+
+/* Barra de salvamento no topo da tela */
+.sync-bar {
+  position: fixed;
+  z-index: 300;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.sync-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--spectrum-line);
+}
+body.is-syncing .sync-bar {
+  opacity: 1;
+}
+[data-fx="on"] .sync-bar::before {
+  right: auto;
+  width: 45%;
+  border-radius: 3px;
+  animation: sync-run 1.2s ease-in-out infinite;
+}
+@keyframes sync-run {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(240%);
+  }
+}
+body.is-syncing .sync .dot {
+  background: var(--accent);
+}
+[data-fx="on"] body.is-syncing .sync .dot {
+  animation: dot-pulse 1s ease-in-out infinite;
+}
+/* Abrindo a conta: barra de carregamento no cartão de entrada */
+body[data-auth="pending"] .auth-card {
+  position: relative;
+  overflow: hidden;
+}
+body[data-auth="pending"] .auth-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: var(--spectrum-line);
+}
+[data-fx="on"] body[data-auth="pending"] .auth-card::after {
+  width: 45%;
+  animation: sync-run 1.2s ease-in-out infinite;
+}
+[data-fx="on"] .auth-show .lens {
+  animation: card-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both 0.15s;
+}
+[data-fx="on"] .auth-card {
+  animation: card-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* Movimento reduzido e navegadores sem vidro */

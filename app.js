@@ -176,7 +176,24 @@ function animatePage() {
   main.classList.remove("page-enter");
   void main.offsetWidth;
   main.classList.add("page-enter");
+  runEntrance(main);
+  // A entrada anima só na troca de tela ou de mês, não a cada clique.
+  clearTimeout(animatePage.timer);
+  animatePage.timer = setTimeout(() => main.classList.remove("page-enter"), 1900);
 }
+// Brilho que acompanha o mouse nos cartões (só na versão completa, em telas com mouse).
+let spotFrame = 0;
+document.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "mouse" || !fxOn() || spotFrame) return;
+  spotFrame = requestAnimationFrame(() => {
+    spotFrame = 0;
+    const card = e.target.closest?.(".panel, .goal-card, .cat-tile, .year-card");
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty("--mx", e.clientX - r.left + "px");
+    card.style.setProperty("--my", e.clientY - r.top + "px");
+  });
+});
 function syncPrivacyButton() {
   const b = $("#privacy-toggle");
   if (!b) return;
@@ -247,7 +264,7 @@ function shifts() {
 function goalRing(p) {
   const r = 26,
     c = 2 * Math.PI * r;
-  return `<svg class="ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" class="ring-track"/><circle cx="32" cy="32" r="${r}" class="ring-value" stroke-dasharray="${((c * p) / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><span class="ring-label">${p}%</span>`;
+  return `<svg class="ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" class="ring-track"/><circle cx="32" cy="32" r="${r}" class="ring-value" stroke-dasharray="${((c * p) / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><span class="ring-label" data-count-pct="${p}">${p}%</span>`;
 }
 function typeSwitch(current) {
   return `<div class="type-switch full" role="radiogroup" aria-label="Tipo"><label><input type="radio" name="type" value="expense" ${current === "expense" ? "checked" : ""}><span>${icon("expense")}Despesa</span></label><label><input type="radio" name="type" value="income" ${current === "income" ? "checked" : ""}><span>${icon("income")}Receita</span></label></div>`;
