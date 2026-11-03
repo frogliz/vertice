@@ -99,8 +99,7 @@ function commit(msg) {
 }
 function greeting() {
   const h = new Date().getHours(),
-    name =
-      typeof Account !== "undefined" && Account.displayName ? String(Account.displayName).trim().split(" ")[0] : "";
+    name = typeof myName === "function" ? myName().split(" ")[0] : "";
   const hello = h < 5 ? "Boa noite" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
   return name ? `${hello}, ${name}` : hello;
 }
@@ -164,7 +163,9 @@ function render() {
     help: helpView,
   }[view]();
   syncPrivacyButton();
+  if (typeof paintAvatars === "function") paintAvatars();
   animatePage();
+  if (typeof Account !== "undefined" && Account.ready) Appearance.welcome?.();
   if (storageFailed) $("#save-status").textContent = "Armazenamento indisponível. Exporte um backup";
 }
 function animatePage() {
@@ -248,15 +249,6 @@ function goalRing(p) {
     c = 2 * Math.PI * r;
   return `<svg class="ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="${r}" class="ring-track"/><circle cx="32" cy="32" r="${r}" class="ring-value" stroke-dasharray="${((c * p) / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><span class="ring-label">${p}%</span>`;
 }
-function goals() {
-  const list = state.goals
-    .map((g) => {
-      const p = pct(g.saved, g.target);
-      return `<article class="panel goal-card"><div class="goal-ring">${goalRing(p)}</div><div class="goal-main"><h3>${esc(g.name)}</h3><p>${amount(g.saved)} guardados de ${amount(g.target)}</p><p class="muted">${g.saved >= g.target ? "Meta alcançada." : "Faltam " + amount(g.target - g.saved) + "."}</p></div><div class="goal-actions">${btn("goal-edit", "Atualizar", { id: g.id, icon: "edit" })}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></article>`;
-    })
-    .join("");
-  return `${pageHead("Para onde suas economias vão", "Crie objetivos e atualize quanto já guardou. Para registrar a entrada e saída de dinheiro guardado, use Reservas.", btn("goal-new", "Nova meta", { cls: "primary", icon: "plus" }))}${list ? `<div class="goal-grid">${list}</div>` : `<article class="panel">${empty("Nenhuma meta ainda", "Uma viagem, a reserva de emergência ou a troca do celular: dê um nome e um valor.", "goal-new", "Criar meta")}</article>`}`;
-}
 function typeSwitch(current) {
   return `<div class="type-switch full" role="radiogroup" aria-label="Tipo"><label><input type="radio" name="type" value="expense" ${current === "expense" ? "checked" : ""}><span>${icon("expense")}Despesa</span></label><label><input type="radio" name="type" value="income" ${current === "income" ? "checked" : ""}><span>${icon("income")}Receita</span></label></div>`;
 }
@@ -287,16 +279,6 @@ function openEntry(type = "expense", recurring = false, id) {
       "Vale só para " + esc(mlabel(month)) + ".",
     );
   showDialog({ danger: e ? btn("delete", "Excluir", { id: e.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
-}
-function openGoal(id) {
-  const g = state.goals.find((g) => g.id === id);
-  modal = { kind: "goal", id };
-  $("#modal-title").textContent = g ? "Atualizar meta" : "Nova meta";
-  $("#fields").innerHTML =
-    field("Nome da meta", "name", "text", g?.name || "", true, 'required maxlength="120" placeholder="Ex.: Viagem de férias"') +
-    moneyField("Quanto quer juntar", "target", g ? g.target : "", false, "required") +
-    moneyField("Quanto já guardou", "saved", g ? g.saved : 0, false, "required");
-  showDialog({ danger: g ? btn("goal-delete", "Excluir", { id: g.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
 }
 const submitLabels = {
   entry: "Salvar lançamento",
@@ -347,6 +329,7 @@ $("#form").addEventListener("submit", (e) => {
   if (typeof submitShared === "function" && submitShared(e)) return;
   if (submitMonthly(e)) return;
   if (submitGrowth(e)) return;
+  if (typeof submitGoals === "function" && submitGoals(e)) return;
   const data = new FormData(e.target);
   if (modal.kind === "entry") {
     const value = F.cents(data.get("value")),
@@ -389,7 +372,7 @@ $("#form").addEventListener("submit", (e) => {
       commit("Salvo em " + mlabel(month) + ".");
     } else commit(modal.id ? "Lançamento atualizado." : "Lançamento adicionado.");
     return;
-  } else {
+  } else if (modal.kind === "goal-legacy") {
     const goal = {
       id: modal.id || uid(),
       name: String(data.get("name") || "").trim(),
@@ -517,6 +500,8 @@ document.addEventListener("click", (e) => {
   }
   if (a === "more-close") return closeOverlays();
   closeOverlays();
+  if (typeof handleGoalAction === "function" && handleGoalAction(a, b)) return;
+  if (typeof handleProfileAction === "function" && handleProfileAction(a, b)) return;
   if (handleExperienceAction(a, b)) return;
   if (typeof handleSharedAction === "function" && handleSharedAction(a, b)) return;
   if (handleMonthAction(a, b)) return;
@@ -548,14 +533,6 @@ document.addEventListener("click", (e) => {
   } else if (a === "shift-paid") {
     state.shiftPaid = state.shiftPaid.includes(d) ? state.shiftPaid.filter((x) => x !== d) : [...state.shiftPaid, d];
     commit();
-  } else if (a === "goal-new") openGoal();
-  else if (a === "goal-edit") openGoal(id);
-  else if (a === "goal-delete") {
-    const g = state.goals.find((g) => g.id === id);
-    if (g && confirm(`Excluir a meta “${g.name}”?`)) {
-      state.goals = state.goals.filter((g) => g.id !== id);
-      commit("Meta excluída.");
-    }
   } else if (a === "budget") {
     const v = F.cents($("#budget").value);
     if (!Number.isSafeInteger(v) || v < 0 || v > 99999999900) {
@@ -604,8 +581,22 @@ document.addEventListener("input", (e) => {
     $("#search").setSelectionRange(pos, pos);
   }
 });
+// Atalhos: N cria lançamento, setas trocam o mês, / busca nos lançamentos.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeOverlays();
+  if (e.key === "Escape") return closeOverlays();
+  const t = e.target,
+    typing = t && (["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName) || t.isContentEditable);
+  if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector("dialog[open]")) return;
+  if (document.body.dataset.auth !== "cloud" && document.body.dataset.auth !== "local") return;
+  if (e.key === "n" || e.key === "N") {
+    e.preventDefault();
+    openEntry();
+  } else if (e.key === "ArrowLeft") setMonth(F.shiftMonth(month, -1));
+  else if (e.key === "ArrowRight") setMonth(F.shiftMonth(month, 1));
+  else if (e.key === "/" && view === "transactions") {
+    e.preventDefault();
+    $("#search")?.focus();
+  }
 });
 $("#month").addEventListener("change", (e) => {
   if (/^\d{4}-\d{2}$/.test(e.target.value)) setMonth(e.target.value);

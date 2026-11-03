@@ -187,6 +187,8 @@ function context() {
   vm.runInContext(fs.readFileSync(__dirname + "/monthly.js", "utf8"), c);
   vm.runInContext(fs.readFileSync(__dirname + "/shared.js", "utf8"), c);
   vm.runInContext(fs.readFileSync(__dirname + "/experience.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/goals.js", "utf8"), c);
+  vm.runInContext(fs.readFileSync(__dirname + "/profile.js", "utf8"), c);
   vm.runInContext(
     'const Appearance={get:()=>({...AppearanceModel.defaults}),sync(){},detach(){},panel:()=>"<p>Preferências visuais</p>"}',
     c,
@@ -947,5 +949,77 @@ test("Todas as telas renderizam, inclusive Ajuda", () => {
     assert.ok(get("#main").innerHTML.length > (v === "appearance" ? 100 : 300), v);
   }
   assert.ok(get("#nav").innerHTML.includes("Ajuda"));
+});
+
+test("Meta: guardar e retirar atualizam o valor e o histórico; não deixa retirar demais", () => {
+  const { run, get } = context();
+  run(`state.goals=[{id:'ps5',name:'PS5',target:450000,saved:50000}]`);
+  run("handleGoalAction('goal-in',{dataset:{id:'ps5'}})");
+  assert.equal(run("modal.kind"), "goal-move");
+  submitForm(run, { value: "1.000,00", date: run("today()") });
+  assert.equal(run("state.goals[0].saved"), 150000);
+  assert.equal(run("state.goals[0].log.length"), 1);
+  run("handleGoalAction('goal-out',{dataset:{id:'ps5'}})");
+  submitForm(run, { value: "5000", date: run("today()") });
+  assert.ok(get("#form-error").textContent.includes("retirar mais"));
+  assert.equal(run("state.goals[0].saved"), 150000);
+  submitForm(run, { value: "500", date: run("today()") });
+  assert.equal(run("state.goals[0].saved"), 100000);
+  assert.equal(run("state.goals[0].log[1].value"), -50000);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Meta: prazo calcula quanto guardar por mês e o ritmo prevê a data", () => {
+  const { run } = context();
+  const now = run("today()").slice(0, 7);
+  const deadline = run(`Finance.shiftMonth('${now}', 9)`);
+  run(`state.goals=[{id:'g',name:'Viagem',target:1100000,saved:100000,deadline:'${deadline}',log:[{date:today(),value:50000}]}]`);
+  const x = run("goalStats(state.goals[0])");
+  assert.equal(x.monthsLeft, 10);
+  assert.equal(x.perMonth, 100000);
+  assert.equal(x.pace, 50000);
+  assert.equal(x.eta, run(`Finance.shiftMonth('${now}', 20)`));
+  run("view='goals';render()");
+  assert.ok(run("$('#main').innerHTML").includes("depois do prazo"));
+});
+test("Meta: salva foto escolhida e prazo; rejeita foto de site desconhecido", () => {
+  const { run, get } = context();
+  run("openGoal()");
+  const img = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/PS5.png/640px-PS5.png";
+  submitForm(run, { name: "PS5", target: "4.500,00", saved: "0", deadline: "2027-06", image: img });
+  assert.equal(run("state.goals[0].image"), img);
+  assert.equal(run("state.goals[0].deadline"), "2027-06");
+  run("openGoal(state.goals[0].id)");
+  submitForm(run, { name: "PS5", target: "4.500,00", saved: "0", deadline: "", image: "https://site-estranho.com/x.png" });
+  assert.ok(get("#form-error").textContent.length > 0);
+  assert.equal(run("state.goals[0].image"), img);
+  run("view='goals';render()");
+  assert.ok(run("$('#main').innerHTML").includes(img));
+  assert.ok(run("$('#main').innerHTML").includes("Wikimedia Commons"));
+});
+test("Meta antiga, sem foto nem prazo, continua aparecendo e editável", () => {
+  const { run } = context();
+  run(`state.goals=[{id:'old',name:'Reserva',target:1000000,saved:280000}];view='goals';render()`);
+  const html = run("$('#main').innerHTML");
+  assert.ok(html.includes("Reserva") && html.includes("28%") && html.includes("goal-fallback"));
+});
+test("Perfil: nome novo vale na saudação e foto enviada fica salva", () => {
+  const { run } = context();
+  run("document.querySelector('#profile-name').value='Russo Nikolas'");
+  run("handleProfileAction('profile-name')");
+  assert.equal(run("state.profile.name"), "Russo Nikolas");
+  run("render()");
+  assert.ok(run("$('#title').textContent").endsWith("Russo"));
+  run("saveProfile({ photo: 'data:image/jpeg;base64,AAAA' }, 'ok')");
+  assert.equal(run("photoURL()"), "data:image/jpeg;base64,AAAA");
+  run("handleProfileAction('profile-photo-remove')");
+  assert.equal(run("'photo' in state.profile"), false);
+  assert.equal(run("initials('Russo Nikolas')"), "RN");
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Configurações mostram perfil e a troca entre vidro completo e modo leve", () => {
+  const { run } = context();
+  run("view='settings';render()");
+  const html = run("$('#main').innerHTML");
+  assert.ok(html.includes("Seu perfil") && html.includes('data-theme-perf="lite"') && html.includes("profile-photo-file"));
 });
 console.log(`${checks} verificações passaram.`);

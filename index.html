@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://kdngcqztmimqzwckwzje.supabase.co wss://kdngcqztmimqzwckwzje.supabase.co; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://kdngcqztmimqzwckwzje.supabase.co wss://kdngcqztmimqzwckwzje.supabase.co https://pt.wikipedia.org https://en.wikipedia.org; img-src 'self' data: blob: https://gravatar.com https://*.gravatar.com https://upload.wikimedia.org; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#ececf0">
 <title>Vértice: suas finanças, claras como vidro</title>
@@ -67,7 +67,7 @@
     <nav id="nav" aria-label="Áreas"></nav>
     <div class="sidebar-foot">
       <p class="sync"><i class="dot" aria-hidden="true"></i><span id="save-status" role="status">Salvo neste navegador</span></p>
-      <button type="button" class="profile" data-account="open"><span class="avatar">EU</span><span class="profile-text">Meu espaço</span></button>
+      <button type="button" class="profile" data-account="open"><span class="avatar" data-me-avatar>EU</span><span class="profile-text">Meu espaço</span></button>
     </div>
   </aside>
   <div class="workspace">
@@ -84,11 +84,13 @@
   <nav id="tabbar" class="tabbar" aria-label="Navegação principal"></nav>
 </div>
 
-<dialog id="more-sheet" class="sheet" aria-labelledby="more-title"><div class="dialog-body"><div class="modal-head"><h2 id="more-title">Mais</h2><button type="button" class="icon-btn" data-action="more-close" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><nav id="more-list" aria-label="Outras áreas"></nav><div class="sheet-account"><button type="button" class="profile" data-account="open"><span class="avatar">EU</span><span class="profile-text">Minha conta</span></button></div></div></dialog>
+<dialog id="more-sheet" class="sheet" aria-labelledby="more-title"><div class="dialog-body"><div class="modal-head"><h2 id="more-title">Mais</h2><button type="button" class="icon-btn" data-action="more-close" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><nav id="more-list" aria-label="Outras áreas"></nav><div class="sheet-account"><button type="button" class="profile" data-account="open"><span class="avatar" data-me-avatar>EU</span><span class="profile-text"><strong data-me-name>Minha conta</strong><small>Perfil e configurações</small></span></button></div></div></dialog>
 
 <dialog id="dialog" aria-labelledby="modal-title"><form id="form"><div class="modal-head"><h2 id="modal-title" tabindex="-1">Novo lançamento</h2><button type="button" id="close" class="icon-btn" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="fields" class="fields"></div><p class="form-error" id="form-error" role="alert"></p><div class="modal-foot"><div id="form-danger"></div><button type="button" class="btn ghost" id="cancel">Cancelar</button><button type="submit" class="btn primary submit">Salvar</button></div></form></dialog>
 
 <dialog id="theme-dialog" class="atelier-dialog" aria-labelledby="appearance-title"><div class="dialog-body"><div class="modal-head"><h2 id="appearance-title" tabindex="-1">Aparência</h2><button type="button" class="icon-btn" data-appearance="close" aria-label="Fechar aparência"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="appearance-controls"></div></div></dialog>
+
+<dialog id="welcome-dialog" class="welcome-dialog" aria-labelledby="welcome-title"><div class="dialog-body" id="welcome-body"></div></dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
 <input type="file" accept="application/json,.json" id="import" hidden>
@@ -106,6 +108,8 @@
 <script src="auth.js"></script>
 <script src="shared.js"></script>
 <script src="experience.js"></script>
+<script src="goals.js"></script>
+<script src="profile.js"></script>
 <script src="home.js"></script>
 <script src="app.js"></script>
 </body>

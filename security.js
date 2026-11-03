@@ -4,7 +4,9 @@
   function safeTree(value, depth = 0, budget = { nodes: 0 }) {
     if (depth > 32 || ++budget.nodes > 300000) return false;
     if (value === null || typeof value === "boolean") return true;
-    if (typeof value === "string") return value.length <= 10000;
+    // Textos comuns até 10 mil caracteres. Só fotos (data:image em base64, conferidas de novo no motor) podem ir além.
+    if (typeof value === "string")
+      return value.length <= 10000 || (value.length <= 160000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value));
     if (typeof value === "number") return Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
     if (typeof value !== "object") return false;
     if (Array.isArray(value)) return value.length <= 50000 && value.every((v) => safeTree(v, depth + 1, budget));

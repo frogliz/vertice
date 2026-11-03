@@ -113,7 +113,7 @@ const Account = (() => {
         ? String(user.user_metadata?.display_name || user.email?.split("@")[0] || "Minha conta").slice(0, 60)
         : "Sem conta";
     node(".profile-text").innerHTML =
-      "<strong>" + safe(name) + "</strong><small>" + safe(cloud ? user.email || "Conta online" : "Só neste aparelho") + "</small>";
+      "<strong data-me-name>" + safe(name) + "</strong><small>" + safe(cloud ? user.email || "Conta online" : "Só neste aparelho") + "</small>";
     node(".avatar").textContent = cloud ? name.slice(0, 2).toUpperCase() : "EU";
   }
   function showApp() {
@@ -502,7 +502,7 @@ const Account = (() => {
   function panel() {
     const cloud = mode === "cloud" && user;
     const name = cloud ? String(user.user_metadata?.display_name || user.email?.split("@")[0] || "Minha conta").slice(0, 60) : "";
-    return `<article class="panel account-card"><div class="account-id"><span class="avatar lg">${cloud ? safe(name.slice(0, 2).toUpperCase()) : "EU"}</span><div><h3>${cloud ? safe(name) : "Você está sem conta"}</h3><p class="muted">${cloud ? safe(user.email) : "Os dados ficam só neste navegador. Com uma conta, ficam salvos online e aparecem em qualquer aparelho."}</p></div></div><div class="row-actions">${cloud ? '<button class="btn" data-account="sync">Sincronizar agora</button><button class="btn ghost" data-account="import-local">Trazer dados do modo sem conta</button><button class="btn ghost" data-account="logout">Sair da conta</button>' : '<button class="btn primary" data-account="open">Entrar ou criar conta</button>'}</div></article>`;
+    return `<article class="panel account-card"><div class="account-id"><span class="avatar lg" data-me-avatar>${cloud ? safe(name.slice(0, 2).toUpperCase()) : "EU"}</span><div><h3>${cloud ? safe(name) : "Você está sem conta"}</h3><p class="muted">${cloud ? safe(user.email) : "Os dados ficam só neste navegador. Com uma conta, ficam salvos online e aparecem em qualquer aparelho."}</p></div></div><div class="row-actions">${cloud ? '<button class="btn" data-account="sync">Sincronizar agora</button><button class="btn ghost" data-account="import-local">Trazer dados do modo sem conta</button><button class="btn ghost" data-account="logout">Sair da conta</button>' : '<button class="btn primary" data-account="open">Entrar ou criar conta</button>'}</div></article>`;
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest?.("[data-account],[data-auth-view]");
@@ -535,6 +535,9 @@ const Account = (() => {
     saveState,
     panel,
     errorText,
+    get email() {
+      return mode === "cloud" && user ? String(user.email || "") : "";
+    },
     get displayName() {
       return mode === "cloud" && user
         ? String(user.user_metadata?.display_name || user.email?.split("@")[0] || "").slice(0, 60)

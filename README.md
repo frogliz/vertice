@@ -12,7 +12,7 @@ Vidro líquido em preto e branco, com três acabamentos escolhidos no Ateliê vi
 - **Névoa**: vidro fosco, com a cor de destaque no brilho.
 - **Grafite**: só preto e branco.
 
-Cada um funciona no claro, no escuro e no automático (segue o aparelho). A fonte é a Mona Sans (licença OFL), servida localmente em `assets/fonts/`. Tudo fica em um único `vertice.css`.
+Cada um funciona no claro, no escuro e no automático (segue o aparelho), em duas versões de desempenho: **Vidro completo** e **Leve e rápido** (sem desfoque real nem efeitos animados, para computador simples e celular). A fonte é a Mona Sans (licença OFL), servida localmente pelo arquivo `mona-sans.woff2` (licença em `MonaSans-OFL.txt`). Tudo fica em um único `vertice.css`.
 
 ## Arquivos
 
@@ -24,6 +24,8 @@ Cada um funciona no claro, no escuro e no automático (segue o aparelho). A font
 | `appearance-model.js`, `theme.js`, `icons.js` | Aparência (estilo, tema, cor) e ícones. |
 | `ui.js` | Funções de interface usadas por todas as telas. |
 | `home.js` | Início, gráfico, Ateliê e Ajuda. |
+| `goals.js` | Metas: cartões com foto (busca na Wikipédia ou envio), prazo, ritmo, guardar e retirar. |
+| `profile.js` | Perfil: nome e foto (Gravatar do e-mail ou foto enviada). |
 | `experience.js` | Lançamentos, Categorias e Configurações. |
 | `shared.js` | Pessoas e carteiras, contas divididas e exclusão de perfis. |
 | `monthly.js` | Relatórios, escolha de mês, ajustes de contas mensais e cópia entre meses. |
@@ -48,6 +50,10 @@ O GitHub Actions (`.github/workflows/pages.yml`) roda os testes e publica a cada
 - O formato dos dados não mudou de versão (`version: 1`). Backups antigos, inclusive da época do Avunara, continuam válidos.
 - Os identificadores de aparência (`fluid`, `editorial`, `precision`, `mint`, `blue`…) são os mesmos de antes; só os nomes e o visual mudaram. Preferências salvas continuam valendo.
 - Novidade no formato, opcional e compatível: lançamentos de perfil podem ter `skip: ["AAAA-MM"]` para ficarem ocultos em meses específicos.
+
+## Backup
+
+O banco copia os dados de todos os usuários duas vezes por dia (6h e 18h de Brasília), com 30 dias de histórico. Como ver, restaurar e guardar uma cópia fora do Supabase: `database/BACKUP.md`.
 
 ## Segurança
 

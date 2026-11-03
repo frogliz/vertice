@@ -98,7 +98,7 @@ test("Preferências anteriores válidas são migradas sem perder cor ou tema", (
   assert.equal(c.root.dataset.theme, "light");
   assert.equal(c.styles["--accent"], "#3563f5");
   assert.equal(c.root.dataset.style, "fluid");
-  assert.equal(c.run("Appearance.get().version"), 2);
+  assert.equal(c.run("Appearance.get().version"), 3);
 });
 test("Preferências inválidas ou corrompidas voltam ao padrão", () => {
   for (const value of ["{quebrado", JSON.stringify({ mode: "light", accent: "blue", custom: "url(x)" })]) {
@@ -181,5 +181,48 @@ test("Ícones de navegação são acessíveis e não dependem de rede", () => {
   const c = setup();
   assert.ok(c.run("navIcon('appearance')").includes('aria-hidden="true"'));
   assert.ok(c.run("navIcon('wealth')").includes("<svg"));
+});
+
+test("Preferência salva da versão anterior vira v3 sem perder nada e liga o modo completo", () => {
+  const c = setup();
+  const v2 = { mode: "dark", style: "fluid", accent: "mint", custom: "#c5f58a", motion: true, density: "comfortable", version: 2, privateStart: false };
+  c.run(`Appearance.bind("user:1", ${JSON.stringify(v2)}, () => true)`);
+  const p = c.run("Appearance.get()");
+  assert.equal(p.version, 3);
+  assert.equal(p.accent, "mint");
+  assert.equal(p.mode, "dark");
+  assert.equal(p.performance, "full");
+  assert.equal(p.welcomed, false);
+  assert.equal(c.root.dataset.perf, "full");
+});
+test("Modo leve é aplicado, salvo e pode voltar para o completo", () => {
+  const c = setup();
+  let saved = null;
+  c.run("Appearance.bind('user:1', null, (p) => { globalThis.lastSaved = p; return true; })");
+  c.run("Appearance.set({ performance: 'lite' })");
+  assert.equal(c.root.dataset.perf, "lite");
+  saved = c.run("globalThis.lastSaved");
+  assert.equal(saved.performance, "lite");
+  c.run("Appearance.set({ performance: 'full' })");
+  assert.equal(c.root.dataset.perf, "full");
+  assert.equal(c.run("Appearance.set({ performance: 'turbo' })"), false);
+});
+test("Escolha de visual aparece só uma vez por pessoa", () => {
+  const c = setup();
+  c.run("Appearance.bind('user:1', null, (p) => { globalThis.lastSaved = p; return true; })");
+  c.run("Appearance.welcome()");
+  assert.equal(c.get("#welcome-dialog").open, true);
+  assert.ok(c.get("#welcome-body").innerHTML.includes('data-theme-perf="lite"'));
+  c.run("Appearance.set({ welcomed: true })");
+  assert.equal(c.run("globalThis.lastSaved.welcomed"), true);
+  c.get("#welcome-dialog").open = false;
+  c.run("Appearance.welcome()");
+  assert.equal(c.get("#welcome-dialog").open, false);
+});
+test("Aparelho fraco é reconhecido para indicar o modo leve", () => {
+  const c = setup();
+  assert.equal(c.run("AppearanceModel.weakDevice({ hardwareConcurrency: 2 })"), true);
+  assert.equal(c.run("AppearanceModel.weakDevice({ deviceMemory: 2, hardwareConcurrency: 8 })"), true);
+  assert.equal(c.run("AppearanceModel.weakDevice({ hardwareConcurrency: 12, deviceMemory: 8 })"), false);
 });
 console.log(`${checks} verificações de aparência passaram.`);

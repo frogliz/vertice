@@ -1,4 +1,15 @@
-# O que mudou nesta versão
+# O que mudou
+
+## Versão de 03/11/2026
+- **Backup automático** dos dados de todos os usuários, duas vezes por dia, com 30 dias de histórico e restauração com um comando. Veja `database/BACKUP.md`.
+- **Modo leve** para computador simples e celular: o mesmo visual, sem os efeitos que pesam. Dá para trocar a qualquer momento no Ateliê visual ou em Configurações.
+- **Escolha de visual no primeiro acesso**: Vidro completo ou Leve e rápido, mais claro ou escuro. Aparece uma vez por pessoa. Aparelhos mais simples já vêm com o modo leve indicado.
+- **Foto de perfil**: puxa sozinha a foto do e-mail (Gravatar), ou a pessoa envia a própria foto. O nome também pode ser trocado e vale na saudação do Início.
+- **Metas em cartão com foto**: escreva "PS5" e o Vértice busca fotos na Wikipédia para você escolher, ou envie uma sua. O cartão mostra quanto falta, o prazo, quanto guardar por mês e, pelo seu ritmo, quando você chega lá.
+- **Guardar e Retirar** direto no cartão da meta, com histórico.
+- **Atalhos no computador**: N cria um lançamento, as setas trocam o mês e / busca nos lançamentos.
+
+## Versão de 02/11/2026
 
 ## Pedidos do cliente
 - **Excluir lançamento em qualquer lugar.** Toda linha em Lançamentos e em Próximos vencimentos tem lixeira, inclusive as contas de perfis e as divididas (antes, só tinham Pagar e Editar). Toda janela de edição também tem Excluir.

@@ -8,7 +8,7 @@ const files = [
   "icon-maskable-512.png", "apple-touch-icon.png", "og.png", "_headers", "config.js", "mona-sans.woff2",
   "appearance-model.js", "icons.js", "theme.js", "catalog.js", "security.js", "shared-engine.js", "engine.js",
   "ui.js", "growth.js", "monthly.js", "cloud-store.js", "auth-errors.js", "auth.js", "shared.js",
-  "experience.js", "home.js", "app.js",
+  "experience.js", "goals.js", "profile.js", "home.js", "app.js",
 ];
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });

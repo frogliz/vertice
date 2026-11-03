@@ -18,7 +18,7 @@ const Appearance = (() => {
   const read = (id) => {
     try {
       const value = JSON.parse(localStorage.getItem(keyFor(id)) || "null");
-      return M.valid(value) ? value : null;
+      return M.valid(value) ? M.normalize(value) : null;
     } catch (_) {
       return null;
     }
@@ -62,6 +62,7 @@ const Appearance = (() => {
     root.dataset.style = prefs.style;
     root.dataset.density = prefs.density;
     root.dataset.motion = prefs.motion ? "on" : "off";
+    root.dataset.perf = prefs.performance;
     root.style.setProperty("--accent", hex);
     root.style.setProperty("--accent-rgb", rgb.join(","));
     root.style.setProperty("--accent-readable", "rgb(" + readable.join(",") + ")");
@@ -74,6 +75,7 @@ const Appearance = (() => {
       ["[data-theme-mode]", "mode", "themeMode"],
       ["[data-theme-accent]", "accent", "themeAccent"],
       ["[data-theme-density]", "density", "themeDensity"],
+      ["[data-theme-perf]", "performance", "themePerf"],
     ])
       all(selector).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[field] === prefs[key])));
     all("[data-appearance-custom]").forEach((el) => (el.value = prefs.custom));
@@ -111,13 +113,14 @@ const Appearance = (() => {
   function bind(id, remote, handler) {
     scope = id;
     onChange = typeof handler === "function" ? handler : null;
-    prefs = M.valid(remote) ? { ...remote } : read(id) || M.normalize(legacy);
+    prefs = M.valid(remote) ? M.normalize(remote) : read(id) || M.normalize(legacy);
     lastSaved = true;
     apply();
   }
   function sync(remote) {
-    if (M.valid(remote) && JSON.stringify(remote) !== JSON.stringify(prefs)) {
-      prefs = { ...remote };
+    const next = M.valid(remote) ? M.normalize(remote) : null;
+    if (next && JSON.stringify(next) !== JSON.stringify(prefs)) {
+      prefs = next;
       try {
         localStorage.setItem(keyFor(scope), JSON.stringify(prefs));
       } catch (_) {}
@@ -151,6 +154,7 @@ const Appearance = (() => {
       )
       .join("");
     return `<div class="atelier">
+      <section class="atelier-block"><div class="atelier-title"><h3>Desempenho</h3><p>${M.weakDevice() ? "Este aparelho parece mais simples: o modo leve deixa tudo mais rápido." : "O modo leve tira os efeitos pesados e mantém o visual."}</p></div><div class="perf-gallery">${perfCards()}</div></section>
       <section class="atelier-block"><div class="atelier-title"><h3>Estilo do vidro</h3><p>Três acabamentos para o mesmo painel.</p></div><div class="style-gallery">${styleCards}</div></section>
       <div class="atelier-split">
         <section class="atelier-block"><div class="atelier-title"><h3>Luz</h3><p>Branco, preto ou igual ao seu aparelho.</p></div>${segment(
@@ -179,6 +183,42 @@ const Appearance = (() => {
       <div class="atelier-foot"><span class="saved-note"><i class="dot"></i><span data-appearance-status>${statusText()}</span></span><button type="button" class="btn ghost" data-appearance="reset">Restaurar padrão</button></div>
     </div>`;
   }
+  function perfCards(attr = "data-theme-perf") {
+    const weak = M.weakDevice();
+    return Object.entries(M.performances)
+      .map(
+        ([id, p]) =>
+          `<button type="button" class="perf-card perf-${id}" ${attr}="${id}" aria-pressed="${prefs.performance === id}"><span class="perf-preview" aria-hidden="true"><i class="pp-lens"><b></b><b></b></i><i class="pp-row"></i><i class="pp-row short"></i></span><span class="style-name">${p.name}${(id === "lite") === weak ? '<span class="chip soft">Indicado aqui</span>' : ""}</span><span class="style-desc">${p.description}</span></button>`,
+      )
+      .join("");
+  }
+  // Primeiro acesso: aparece uma vez por pessoa (o aviso fica salvo junto com as preferências da conta).
+  function welcome() {
+    const dialog = document.querySelector("#welcome-dialog");
+    if (!dialog || dialog.open || prefs.welcomed) return;
+    if (M.weakDevice() && prefs.performance === "full") {
+      prefs = { ...prefs, performance: "lite" };
+      apply();
+    }
+    document.querySelector("#welcome-body").innerHTML = `<div class="welcome-head">${typeof brandMark === "function" ? brandMark() : ""}<div><h2 id="welcome-title" tabindex="-1">Como você quer o Vértice?</h2><p>Escolha agora. Dá para trocar quando quiser no Ateliê visual.</p></div></div><div class="perf-gallery">${perfCards()}</div><div class="welcome-light"><span>Luz</span>${segment(
+      "data-theme-mode",
+      [
+        ["light", "Claro"],
+        ["dark", "Escuro"],
+        ["system", "Automático"],
+      ],
+      prefs.mode,
+    )}</div><div class="welcome-foot"><button type="button" class="btn primary" data-welcome="done">Começar</button></div>`;
+    apply();
+    dialog.addEventListener?.("close", () => !prefs.welcomed && set({ welcomed: true }), { once: true });
+    dialog.showModal();
+    document.querySelector("#welcome-title")?.focus?.();
+  }
+  function finishWelcome() {
+    if (!prefs.welcomed) set({ welcomed: true });
+    const dialog = document.querySelector("#welcome-dialog");
+    if (dialog?.open) dialog.close();
+  }
   function open() {
     const target = document.querySelector("#appearance-controls");
     if (target) target.innerHTML = panel();
@@ -189,16 +229,18 @@ const Appearance = (() => {
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest?.(
-      "[data-theme-style],[data-theme-mode],[data-theme-accent],[data-theme-density],[data-appearance]",
+      "[data-theme-style],[data-theme-mode],[data-theme-accent],[data-theme-density],[data-theme-perf],[data-appearance],[data-welcome]",
     );
     if (!b) return;
-    if (b.dataset.themeStyle) set({ style: b.dataset.themeStyle });
+    if (b.dataset.welcome) finishWelcome();
+    else if (b.dataset.themePerf) set({ performance: b.dataset.themePerf });
+    else if (b.dataset.themeStyle) set({ style: b.dataset.themeStyle });
     else if (b.dataset.themeMode) set({ mode: b.dataset.themeMode });
     else if (b.dataset.themeAccent) set({ accent: b.dataset.themeAccent });
     else if (b.dataset.themeDensity) set({ density: b.dataset.themeDensity });
     else if (b.dataset.appearance === "open") open();
     else if (b.dataset.appearance === "close") document.querySelector("#theme-dialog").close();
-    else if (b.dataset.appearance === "reset") set({ ...M.defaults });
+    else if (b.dataset.appearance === "reset") set({ ...M.defaults, welcomed: true });
   });
   document.addEventListener("input", (e) => {
     if (e.target.hasAttribute?.("data-appearance-custom")) set({ custom: e.target.value, accent: "custom" });
@@ -219,6 +261,7 @@ const Appearance = (() => {
     detach,
     panel,
     open,
+    welcome,
     mode: resolvedMode,
     get: () => ({ ...prefs }),
     valid: M.valid,

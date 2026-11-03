@@ -138,7 +138,7 @@ function planPanel(t) {
       : `<p class="muted">Defina um teto de despesas para ver quanto ainda cabe no mês.</p>${btn("month-settings", "Definir limite", { cls: "ghost", icon: "plus" })}`
   }<div class="plan-goal">${
     goal
-      ? `<div class="goal-mini"><div class="goal-ring sm">${goalRing(pct(goal.saved, goal.target))}</div><div><span class="muted">Sua meta</span><strong>${esc(goal.name)}</strong><span>${amount(goal.saved)} de ${amount(goal.target)}</span></div></div><button type="button" class="btn ghost" data-view="goals">Metas</button>`
+      ? `<div class="goal-mini">${goal.image ? `<img class="goal-thumb" src="${esc(goal.image)}" alt="" referrerpolicy="no-referrer">` : `<div class="goal-ring sm">${goalRing(pct(goal.saved, goal.target))}</div>`}<div><span class="muted">Sua meta</span><strong>${esc(goal.name)}</strong><span>${amount(goal.saved)} de ${amount(goal.target)}</span></div></div><button type="button" class="btn ghost" data-view="goals">Metas</button>`
       : `<span class="muted">Guardando para algo?</span><button type="button" class="btn ghost" data-view="goals">Criar meta</button>`
   }</div></article>`;
 }

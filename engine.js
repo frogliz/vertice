@@ -220,6 +220,32 @@
           /^\d{4}-\d{2}-\d{2}$/.test(d) &&
           new Date(d + "T12:00:00").toISOString().slice(0, 10) === d,
         text = (t) => typeof t === "string" && t.length <= 120;
+      // Campos novos, todos opcionais: perfil (nome e foto) e metas com foto, prazo e histórico.
+      const photo = (v, max) =>
+        v === undefined ||
+        v === "" ||
+        (typeof v === "string" &&
+          v.length <= max &&
+          (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ||
+            /^https:\/\/upload\.wikimedia\.org\/[^\s"'<>()\\]+$/.test(v)));
+      const goalsOk = s.goals.every(
+        (g) =>
+          photo(g.image, 160000) &&
+          (g.deadline === undefined || g.deadline === "" || /^\d{4}-(0[1-9]|1[0-2])$/.test(g.deadline)) &&
+          (g.log === undefined ||
+            (Array.isArray(g.log) &&
+              g.log.length <= 1000 &&
+              g.log.every((x) => date(x.date) && Number.isSafeInteger(x.value) && x.value !== 0 && Math.abs(x.value) <= 99999999900))),
+      );
+      const profileOk =
+        s.profile === undefined ||
+        (s.profile &&
+          typeof s.profile === "object" &&
+          !Array.isArray(s.profile) &&
+          (s.profile.name === undefined || (typeof s.profile.name === "string" && s.profile.name.length <= 60)) &&
+          photo(s.profile.photo, 90000) &&
+          (s.profile.gravatar === undefined || typeof s.profile.gravatar === "boolean"));
+      if (!goalsOk || !profileOk) return false;
       return (
         (s.debts === undefined ||
           (Array.isArray(s.debts) &&
