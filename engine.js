@@ -32,6 +32,33 @@
     const day = new Date(date + "T12:00:00").getDay();
     return day === 0 || day === 6 || holidays.includes(date) ? 10000 : 5000;
   }
+  // Folha de plantões: os plantões trabalhados em um mês entram juntos no dia do pagamento.
+  // shiftPay = { day: 1..31, offset: 0 (mesmo mês) ou 1 (mês seguinte) }. Sem shiftPay, vale o jeito antigo:
+  // cada plantão conta no próprio mês.
+  function shiftPayroll(s, m) {
+    const c = s.shiftPay,
+      work = c ? shiftMonth(m, -c.offset) : m,
+      paidList = shiftPaidList(s),
+      days = shiftList(s)
+        .filter((d) => monthOf(d) === work)
+        .sort(),
+      paidDays = days.filter((d) => paidList.includes(d)),
+      sum = (list) => list.reduce((a, d) => a + rate(d, s.holidays), 0);
+    return {
+      configured: !!c,
+      work,
+      payday: c ? dateFor(m, c.day) : null,
+      days,
+      count: days.length,
+      total: sum(days),
+      paid: sum(paidDays),
+      done: days.length > 0 && paidDays.length === days.length,
+      weekend: days.filter((d) => [0, 6].includes(new Date(d + "T12:00:00").getDay())).length,
+      holiday: days.filter((d) => ![0, 6].includes(new Date(d + "T12:00:00").getDay()) && s.holidays.includes(d)).length,
+    };
+  }
+  // Mês em que os plantões de um mês trabalhado são pagos.
+  const shiftPayMonth = (s, work) => (s.shiftPay ? shiftMonth(work, s.shiftPay.offset) : work);
   function debtSchedule(s, d) {
     return Array.from({ length: d.count }, (_, i) => {
       const m = shiftMonth(monthOf(d.firstDue), i),
@@ -75,13 +102,11 @@
   }
   function totals(s, m) {
     const list = entries(s, m),
-      shifts = shiftList(s).filter((d) => monthOf(d) === m),
-      shiftTotal = shifts.reduce((a, d) => a + rate(d, s.holidays), 0),
+      payroll = shiftPayroll(s, m),
+      shiftTotal = payroll.total,
       income = list.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0) + shiftTotal,
       expense = list.filter((e) => e.type === "expense").reduce((a, e) => a + e.value, 0),
-      received =
-        list.filter((e) => e.type === "income" && e.done).reduce((a, e) => a + e.value, 0) +
-        shifts.filter((d) => shiftPaidList(s).includes(d)).reduce((a, d) => a + rate(d, s.holidays), 0),
+      received = list.filter((e) => e.type === "income" && e.done).reduce((a, e) => a + e.value, 0) + payroll.paid,
       paid = list.filter((e) => e.type === "expense" && e.done).reduce((a, e) => a + e.value, 0),
       opening = monthConfig(s, m).opening || 0;
     return {
@@ -94,7 +119,7 @@
       opening,
       closing: opening + income - expense - savingFlow(s, m),
       shiftTotal,
-      shiftCount: shifts.length,
+      shiftCount: payroll.count,
       list,
     };
   }
@@ -246,7 +271,16 @@
           (s.profile.name === undefined || (typeof s.profile.name === "string" && s.profile.name.length <= 60)) &&
           photo(s.profile.photo, 90000) &&
           (s.profile.gravatar === undefined || typeof s.profile.gravatar === "boolean"));
-      if (!goalsOk || !profileOk) return false;
+      const shiftPayOk =
+        s.shiftPay === undefined ||
+        (s.shiftPay &&
+          typeof s.shiftPay === "object" &&
+          Number.isInteger(s.shiftPay.day) &&
+          s.shiftPay.day >= 1 &&
+          s.shiftPay.day <= 31 &&
+          [0, 1].includes(s.shiftPay.offset) &&
+          Object.keys(s.shiftPay).every((k) => ["day", "offset"].includes(k)));
+      if (!goalsOk || !profileOk || !shiftPayOk) return false;
       return (
         (s.debts === undefined ||
           (Array.isArray(s.debts) &&
@@ -403,6 +437,8 @@
   }
   root.Finance = {
     options,
+    shiftPayroll,
+    shiftPayMonth,
     plain,
     shiftList,
     shiftPaidList,

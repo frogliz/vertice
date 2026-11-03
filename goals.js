@@ -32,11 +32,18 @@ function goalStats(g) {
   }
   return stats;
 }
+// Anel neon: arco do quanto já foi guardado, um cometa que dá voltas e a porcentagem no centro.
+function goalOrb(g, p, done) {
+  const r = 31,
+    c = 2 * Math.PI * r,
+    gid = "orb-" + String(g.id).replace(/[^a-z0-9]/gi, "").slice(0, 24);
+  return `<div class="goal-orb ${done ? "is-done" : ""}" role="img" aria-label="${p}% guardado"><svg viewBox="0 0 76 76" aria-hidden="true"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="neon-a"/><stop offset=".5" class="neon-b"/><stop offset="1" class="neon-c"/></linearGradient></defs><circle cx="38" cy="38" r="${r}" class="orb-track"/><circle cx="38" cy="38" r="${r}" class="orb-arc" stroke="url(#${gid})" stroke-dasharray="${((c * Math.min(100, p)) / 100).toFixed(2)} ${c.toFixed(2)}"/></svg><svg class="orb-spin" viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="${r}" stroke="url(#${gid})" stroke-dasharray="26 ${(c - 26).toFixed(2)}"/></svg><svg class="orb-spin rev" viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="${r}" stroke="url(#${gid})" stroke-dasharray="12 ${(c - 12).toFixed(2)}"/></svg><strong class="orb-pct" data-count-pct="${p}">${p}%</strong></div>`;
+}
 function goalCover(g, size = "") {
   const wiki = /^https:\/\/upload\.wikimedia\.org\//.test(g.image || "");
   return `<div class="goal-cover ${size}">${
     g.image
-      ? `<img src="${esc(g.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+      ? `<img src="${esc(g.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
       : `<span class="goal-fallback" aria-hidden="true">${esc((g.name.trim()[0] || "?").toUpperCase())}</span>`
   }${wiki && !size ? '<small class="goal-credit">Foto: Wikimedia</small>' : /openverse/.test(g.image || "") && !size ? '<small class="goal-credit">Foto: Openverse</small>' : ""}</div>`;
 }
@@ -54,7 +61,7 @@ function goalCard(g) {
       : g.deadline && !x.late
         ? `<p class="goal-pace">Guardando ${amount(x.perMonth)} por mês, você chega até ${esc(mlabel(g.deadline).toLowerCase())}.</p>`
         : `<p class="goal-pace">Toque em Guardar sempre que separar dinheiro. O Vértice calcula quando você chega lá.</p>`;
-  return `<article class="goal-card ${x.done ? "is-done" : ""}">${goalCover(g)}<span class="goal-pct" data-count-pct="${x.p}">${x.p}%</span><div class="goal-body"><h3>${esc(g.name)}</h3><div class="goal-amounts">${bigAmount(g.saved, "md")}<span class="muted">de ${amount(g.target)}</span></div>${progress(x.p, x.done ? "var(--pos)" : "")}<dl class="goal-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${pace}<div class="goal-actions">${btn("goal-in", "Guardar", { id: g.id, cls: "primary", icon: "plus" })}${g.saved ? btn("goal-out", "Retirar", { id: g.id, icon: "minus", cls: "ghost" }) : ""}${iconBtn("goal-edit", "edit", "Editar meta " + g.name, g.id)}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></div></article>`;
+  return `<article class="goal-card ${x.done ? "is-done" : ""}"><span class="goal-neon" aria-hidden="true"><i></i></span>${goalCover(g)}${goalOrb(g, x.p, x.done)}<div class="goal-body"><h3>${esc(g.name)}</h3><div class="goal-amounts">${bigAmount(g.saved, "md")}<span class="muted">de ${amount(g.target)}</span></div>${progress(x.p, x.done ? "var(--pos)" : "")}<dl class="goal-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${pace}<div class="goal-actions">${btn("goal-in", "Guardar", { id: g.id, cls: "primary", icon: "plus" })}${g.saved ? btn("goal-out", "Retirar", { id: g.id, icon: "minus", cls: "ghost" }) : ""}${iconBtn("goal-edit", "edit", "Editar meta " + g.name, g.id)}${iconBtn("goal-delete", "trash", "Excluir meta " + g.name, g.id, "danger")}</div></div></article>`;
 }
 function goals() {
   const list = state.goals,

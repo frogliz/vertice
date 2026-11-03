@@ -1023,6 +1023,67 @@ test("Configurações mostram perfil e a troca entre vidro completo e modo leve"
   assert.ok(html.includes("Seu perfil") && html.includes('data-theme-perf="lite"') && html.includes("profile-photo-file"));
 });
 
+test("Cartão da meta: anel neon com porcentagem acessível, degradê próprio e cometas", () => {
+  const { run } = context();
+  run(`state.goals=[{id:'ps5',name:'PS5',target:400000,saved:100000},{id:'ok',name:'Feito',target:100,saved:100}];view='goals';render()`);
+  const html = run("$('#main').innerHTML");
+  assert.ok(html.includes('aria-label="25% guardado"') && html.includes('data-count-pct="25"'));
+  assert.ok(html.includes('stroke="url(#orb-ps5)"') && html.includes('id="orb-ps5"'));
+  assert.equal((html.match(/class="orb-spin/g) || []).length, 4);
+  assert.ok(html.includes("goal-orb is-done") && html.includes("goal-neon"));
+});
+test("Desempenho: aparelho lento desliga os efeitos contínuos, aparelho bom mantém", () => {
+  const { run } = context();
+  run("document.documentElement = document.documentElement || { dataset: {} }");
+  run("adaptEffects(Array(30).fill(16))");
+  assert.notEqual(run("document.documentElement.dataset.fxLevel"), "low");
+  run("adaptEffects(Array(30).fill(55))");
+  assert.equal(run("document.documentElement.dataset.fxLevel"), "low");
+});
+test("Plantões: dia de semana 50, sábado 100, domingo 100, feriado em dia de semana 100", () => {
+  const h = ["2026-11-20"];
+  assert.equal(F.rate("2026-11-02", h), 5000);
+  assert.equal(F.rate("2026-11-07", h), 10000);
+  assert.equal(F.rate("2026-11-08", h), 10000);
+  assert.equal(F.rate("2026-11-20", h), 10000);
+  assert.equal(F.rate("2026-11-21", h), 10000);
+  assert.equal(F.rate("2026-11-19", h), 5000);
+});
+test("Folha de plantões: os de novembro entram juntos no dia 5 de dezembro e recebem de uma vez", () => {
+  const { run, get } = context();
+  run("var Account={canUseShifts:true,saveState:()=>true,ready:false}");
+  run(`state.shifts=['2026-11-02','2026-11-07','2026-11-08','2026-11-20'];state.holidays=['2026-11-20'];month='2026-11';view='shifts';render()`);
+  assert.ok(get("#main").innerHTML.includes("Quando os plantões são pagos?"));
+  run("document.querySelector('#shift-pay-day').value='5';document.querySelector('#shift-pay-offset').value='1'");
+  run("document.listeners.click({target:{closest:()=>({dataset:{action:'shift-pay-save'}})}})");
+  assert.equal(run("JSON.stringify(state.shiftPay)"), '{"day":5,"offset":1}');
+  assert.equal(run("Finance.totals(state,'2026-11').income"), 0);
+  assert.equal(run("Finance.totals(state,'2026-12').income"), 35000);
+  run("month='2026-12';view='transactions';render()");
+  const html = get("#main").innerHTML;
+  assert.ok(html.includes("Plantões de novembro") && html.includes('data-action="shift-payroll"') && html.includes("4 plantões"));
+  run("document.listeners.click({target:{closest:()=>({dataset:{action:'shift-payroll',month:'2026-11'}})}})");
+  assert.equal(run("state.shiftPaid.length"), 4);
+  assert.equal(run("Finance.totals(state,'2026-12').received"), 35000);
+  run("document.listeners.click({target:{closest:()=>({dataset:{action:'shift-payroll',month:'2026-11'}})}})");
+  assert.equal(run("state.shiftPaid.length"), 0);
+  assert.ok(run("Finance.valid(state)"));
+});
+test("Folha de plantões no mesmo mês e dia 31 em mês curto", () => {
+  const s = { version: 1, entries: [], shifts: ["2027-02-10"], shiftPaid: [], holidays: [], paid: {}, goals: [], budget: 0, categories: [], shiftPay: { day: 31, offset: 0 } };
+  assert.equal(F.shiftPayroll(s, "2027-02").payday, "2027-02-28");
+  assert.equal(F.totals(s, "2027-02").income, 5000);
+  assert.ok(!F.valid({ ...s, shiftPay: { day: 0, offset: 1 } }));
+  assert.ok(!F.valid({ ...s, shiftPay: { day: 5, offset: 2 } }));
+});
+test("Plantões ficam invisíveis para quem não é o dono, inclusive a folha", () => {
+  const { run, get } = context();
+  run(`state.shifts=['2026-11-02'];state.shiftPay={day:5,offset:1};month='2026-12';view='transactions';render()`);
+  assert.ok(!get("#main").innerHTML.includes("Plantões de novembro"));
+  assert.equal(run("Finance.totals(state,'2026-12').income"), 0);
+  run("view='shifts';render()");
+  assert.equal(run("view"), "shared");
+});
 const asyncTests = [];
 const atest = (name, fn) => asyncTests.push(async () => {
   await fn();

@@ -1,5 +1,20 @@
 # O que mudou
 
+## Versão de 03/11/2026 (plantões)
+- **Plantões liberados só para a conta do Russo** (permissão marcada no banco; nenhuma outra conta vê a tela, nem a folha nos totais).
+- **Folha de plantões**: você toca nos dias em que pegou plantão e o total entra de uma vez, como uma receita só, no dia do pagamento. Dá para escolher o dia e se é na folha do mesmo mês ou do mês seguinte.
+- Valores: segunda a sexta R$ 50; sábado, domingo e feriado R$ 100 (feriado só muda o valor em dia de semana).
+- A folha aparece em Lançamentos, em Próximos vencimentos no Início, no gráfico do saldo e na planilha do mês. Um toque em Receber marca a folha inteira como recebida.
+- A tela mostra o total do mês, quantos plantões foram em dia de semana, fim de semana e feriado, e qual folha cai neste mês.
+
+## Versão de 03/11/2026 (noite)
+- **Cartão da meta neon**: anel com a porcentagem no centro, arco em degradê neon, um cometa de luz dando voltas e o brilho "respirando". Ao passar o mouse, a borda acende em neon girando, o cartão sobe, a foto aproxima e um segundo cometa gira ao contrário. Meta concluída fica neon verde.
+- **Muito mais leve, até na versão completa**: o desfoque real ficou só onde faz diferença (barra do celular e janelas). Em aparelho fraco simulado, as telas passaram de 7 a 21 para perto de 60 quadros por segundo.
+- **Ajuste automático**: se o aparelho engasga na primeira animação, os efeitos contínuos param naquela visita, sem mudar a escolha da pessoa.
+- As animações pausam com a aba escondida, e as de entrada rodam só no que está na tela.
+- **Celular**: auditoria em 8 larguras (de 320 px ao computador) sem nada vazando. Botões com tamanho de dedo, campos que não fazem o iPhone dar zoom, barra de baixo com nomes curtos em telas pequenas, celular deitado e entalhe do iPhone tratados.
+- **Tablet**: barra lateral só com ícones, sobrando espaço para o conteúdo.
+
 ## Versão de 03/11/2026 (tarde)
 - **Mais animações na versão completa**: os números contam até o valor, as barras crescem e ganham um brilho que passa, o fundo tem luzes que flutuam, os cartões entram em sequência, sobem e acendem onde o mouse passa, as faixas de aviso ganham reflexo, o gráfico se desenha sozinho, a pizza gira ao entrar e as barras do ano sobem. Uma barra colorida no topo mostra quando está salvando.
 - No **modo leve** nada disso roda, e também não roda se a pessoa desligar o "Movimento suave" ou se o aparelho pedir menos movimento.

@@ -59,24 +59,47 @@ function bigAmountInner(v) {
 const fxOn = () => document.documentElement?.dataset?.fx === "on";
 function runEntrance(main) {
   if (!fxOn() || typeof main.querySelectorAll !== "function") return;
-  main
-    .querySelectorAll(".panel, .goal-card, .cat-tile, .year-card, .summary-strip > div, .lens, .person, .month-note, .tx-day")
-    .forEach((el, i) => el.style.setProperty("--stagger", Math.min(i, 14)));
-  const items = [...main.querySelectorAll("[data-count-cents], [data-count-pct]")].slice(0, 40);
-  if (!items.length || typeof requestAnimationFrame !== "function") return;
+  // Só o que está na tela (ou logo abaixo) anima: o resto já aparece pronto. Menos trabalho para aparelho fraco.
+  const limit = (typeof innerHeight === "number" ? innerHeight : 900) * 1.1;
+  let n = 0;
+  main.querySelectorAll(".panel, .goal-card, .cat-tile, .year-card, .summary-strip > div, .lens, .person, .month-note, .tx-day, .tx").forEach((el) => {
+    if (n >= 18 || el.getBoundingClientRect().top > limit) return;
+    el.classList.add("fx-in");
+    el.style.setProperty("--stagger", Math.min(n++, 14));
+  });
+  const items = [...main.querySelectorAll("[data-count-cents], [data-count-pct]")]
+    .filter((el) => el.getBoundingClientRect().top < limit)
+    .slice(0, 24);
+  if (typeof requestAnimationFrame !== "function") return;
   const start = performance.now(),
     dur = 1100,
-    ease = (t) => 1 - Math.pow(1 - t, 4);
+    ease = (t) => 1 - Math.pow(1 - t, 4),
+    gaps = [];
+  let last = start;
   const step = (now) => {
+    gaps.push(now - last);
+    last = now;
     const t = Math.min(1, (now - start) / dur),
       k = ease(t);
     for (const el of items)
       if (el.dataset.countCents !== undefined) el.innerHTML = bigAmountInner(Math.round(Number(el.dataset.countCents) * k));
       else el.textContent = Math.round(Number(el.dataset.countPct) * k) + "%";
     if (t < 1) requestAnimationFrame(step);
+    else adaptEffects(gaps.slice(3));
   };
   requestAnimationFrame(step);
 }
+// Se a animação de entrada rodou abaixo de ~30 quadros por segundo, este aparelho está sofrendo:
+// os efeitos contínuos (luzes do fundo, reflexos, cometas) param nesta visita. O visual continua o mesmo.
+function adaptEffects(gaps) {
+  if (gaps.length < 8 || document.documentElement.dataset.fxLevel === "low") return;
+  const sorted = [...gaps].sort((a, b) => a - b),
+    median = sorted[Math.floor(sorted.length / 2)];
+  if (median > 34) document.documentElement.dataset.fxLevel = "low";
+}
+document.addEventListener("visibilitychange", () => {
+  document.documentElement.dataset.hidden = document.hidden ? "1" : "";
+});
 function field(label, name, type, value, full = false, extra = "") {
   return `<label class="field ${full ? "full" : ""}"><span class="field-label">${label}</span><input name="${name}" type="${type}" value="${esc(value ?? "")}" ${extra}></label>`;
 }

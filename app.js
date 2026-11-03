@@ -108,7 +108,7 @@ function periodText() {
   return month === now ? "Mês atual" : month < now ? "Histórico" : "Planejamento";
 }
 function navButton(k, p) {
-  return `<button class="${view === k ? "active" : ""}" data-view="${k}" ${view === k ? 'aria-current="page"' : ""}><span class="nav-icon">${navIcon(k)}</span><span class="nav-label">${p.title}</span></button>`;
+  return `<button class="${view === k ? "active" : ""}" data-view="${k}" title="${p.title}" ${view === k ? 'aria-current="page"' : ""}><span class="nav-icon">${navIcon(k)}</span><span class="nav-label">${p.title}</span></button>`;
 }
 function renderNav() {
   const visible = Object.entries(pages).filter(([k, p]) => !p.owner || ownerTools());
@@ -130,7 +130,7 @@ function renderNav() {
           ? `<button class="tab-new" data-action="expense" aria-label="Novo lançamento">${icon("plus")}</button>`
           : k === "more"
             ? `<button class="${["shared", "transactions", "forecast"].includes(view) ? "" : "active"}" data-action="more-open" aria-haspopup="dialog">${icon("menu")}<span>Mais</span></button>`
-            : `<button class="${view === k ? "active" : ""}" data-view="${k}" ${view === k ? 'aria-current="page"' : ""}>${navIcon(k)}<span>${k === "shared" ? "Início" : k === "transactions" ? "Lançamentos" : "Relatórios"}</span></button>`,
+            : `<button class="${view === k ? "active" : ""}" data-view="${k}" aria-label="${pages[k].title}" ${view === k ? 'aria-current="page"' : ""}>${navIcon(k)}<span>${k === "shared" ? "Início" : k === "transactions" ? '<b class="long">Lançamentos</b><b class="short">Extrato</b>' : '<b class="long">Relatórios</b><b class="short">Relatório</b>'}</span></button>`,
       )
       .join("");
   const more = $("#more-list");
@@ -184,7 +184,7 @@ function animatePage() {
 // Brilho que acompanha o mouse nos cartões (só na versão completa, em telas com mouse).
 let spotFrame = 0;
 document.addEventListener("pointermove", (e) => {
-  if (e.pointerType !== "mouse" || !fxOn() || spotFrame) return;
+  if (e.pointerType !== "mouse" || !fxOn() || spotFrame || document.documentElement.dataset.fxLevel === "low") return;
   spotFrame = requestAnimationFrame(() => {
     spotFrame = 0;
     const card = e.target.closest?.(".panel, .goal-card, .cat-tile, .year-card");
@@ -210,6 +210,7 @@ function payButton(e, action) {
   return `<button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="${action}" data-id="${esc(e.id)}" aria-pressed="${e.done}" title="${e.done ? "Marcar como pendente" : "Confirmar neste mês"}">${e.done ? icon("check") : ""}${label}</button>`;
 }
 function transactionRow(e, actions = true) {
+  if (e.payroll) return payrollRow(e, actions);
   if (e.sharedId) return sharedTransactionRow(e, actions);
   const tags = [
     e.debtId ? `<span class="tag">Parcela ${e.installment}/${e.count}</span>` : "",
@@ -237,29 +238,59 @@ function txList(list, actions = true, groupByDay = true) {
     )
     .join("")}</div>`;
 }
+let shiftPayEditing = false;
+// Linha da folha de plantões em Lançamentos e no Início (só para o dono, com a folha configurada).
+function shiftPayrollRow(m) {
+  if (!ownerTools() || !state.shiftPay) return null;
+  const p = F.shiftPayroll(state, m);
+  if (!p.count) return null;
+  return { id: "payroll:" + p.work, name: "Plantões de " + monthName(p.work).toLowerCase(), type: "income", value: p.total, date: p.payday, category: "Plantões", done: p.done, payroll: true, work: p.work, count: p.count, recurring: false };
+}
+function payrollRow(e, actions = true) {
+  return `<div class="tx income payroll ${e.done ? "done" : ""} ${isLate(e) ? "late" : ""}"><span class="tx-icon" style="--c:#8f7cff">${icon("shifts")}</span><div class="tx-main"><strong class="tx-title">${esc(e.name)}</strong><div class="tx-meta"><span class="tag">${e.count} ${e.count === 1 ? "plantão" : "plantões"}</span><span class="tag">Na folha</span><span class="due">${dueText(e.date, e.done, "income")}</span></div></div>${amount(e.value, "tx-value pos", "+ ")}${actions ? `<div class="tx-actions"><button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${e.work}" aria-pressed="${e.done}">${e.done ? icon("check") + "Recebido" : "Receber"}</button>${actions === "compact" ? "" : `<button type="button" class="icon-btn" data-view="shifts" title="Abrir plantões" aria-label="Abrir plantões">${icon("open")}</button>`}</div>` : ""}</div>`;
+}
+function shiftPayForm(c) {
+  return `<div class="shift-pay-form"><label class="field"><span class="field-label">Dia do pagamento</span><input id="shift-pay-day" type="number" inputmode="numeric" min="1" max="31" step="1" value="${c?.day || 5}"></label><label class="field"><span class="field-label">Os plantões de um mês são pagos</span><select id="shift-pay-offset"><option value="1" ${!c || c.offset === 1 ? "selected" : ""}>Na folha do mês seguinte</option><option value="0" ${c?.offset === 0 ? "selected" : ""}>Na folha do mesmo mês</option></select></label>${btn("shift-pay-save", "Salvar", { cls: "primary" })}</div>`;
+}
 function shifts() {
-  const t = F.totals(state, month),
+  const c = state.shiftPay,
+    work = month,
+    payMonth = F.shiftPayMonth(state, work),
+    p = F.shiftPayroll(state, payMonth),
     first = new Date(month + "-01T12:00:00").getDay(),
-    paid = state.shifts
-      .filter((d) => F.monthOf(d) === month && state.shiftPaid.includes(d))
-      .reduce((a, d) => a + F.rate(d, state.holidays), 0);
+    normal = p.count - p.weekend - p.holiday;
   const days = Array.from({ length: F.daysIn(month) }, (_, i) => {
     const d = F.dateFor(month, i + 1),
       weekend = [0, 6].includes(new Date(d + "T12:00:00").getDay()),
       selected = state.shifts.includes(d),
-      holiday = state.holidays.includes(d);
-    return `<button type="button" class="day ${weekend ? "weekend" : ""} ${selected ? "selected" : ""} ${holiday ? "holiday" : ""} ${d === today() ? "today" : ""}" data-action="day" data-date="${d}" title="${holiday ? "Feriado, " : ""}${shortDate(d)}: ${F.money(F.rate(d, state.holidays))}" aria-pressed="${holidayMode ? holiday : selected}"><b>${i + 1}</b><small>${F.money(F.rate(d, state.holidays)).replace(",00", "")}</small></button>`;
+      holiday = state.holidays.includes(d),
+      value = F.rate(d, state.holidays) / 100;
+    return `<button type="button" class="day ${weekend ? "weekend" : ""} ${selected ? "selected" : ""} ${holiday ? "holiday" : ""} ${d === today() ? "today" : ""}" data-action="day" data-date="${d}" aria-pressed="${holidayMode ? holiday : selected}" aria-label="${dayLabel(d)}${holiday ? ", feriado" : ""}, R$ ${value}${selected ? ", plantão marcado" : ""}"><b>${i + 1}</b><small><span class="day-cur">R$ </span>${value}</small></button>`;
   }).join("");
   const list =
-    state.shifts
-      .filter((d) => F.monthOf(d) === month)
-      .sort()
+    p.days
       .map(
         (d) =>
-          `<div class="tx"><span class="tx-icon">${icon("calendar")}</span><div class="tx-main"><strong class="tx-title">${dayLabel(d)}</strong><div class="tx-meta"><span class="tag">${state.holidays.includes(d) ? "Feriado" : "Plantão"}</span></div></div>${amount(F.rate(d, state.holidays), "tx-value pos", "+ ")}<div class="tx-actions"><button type="button" class="pay ${state.shiftPaid.includes(d) ? "is-done" : ""}" data-action="shift-paid" data-date="${d}" aria-pressed="${state.shiftPaid.includes(d)}">${state.shiftPaid.includes(d) ? icon("check") + "Recebido" : "Receber"}</button></div></div>`,
+          `<div class="tx"><span class="tx-icon" style="--c:${F.rate(d, state.holidays) > 5000 ? "#ff86c8" : "#8f7cff"}">${icon("calendar")}</span><div class="tx-main"><strong class="tx-title">${dayLabel(d)}</strong><div class="tx-meta"><span class="tag">${state.holidays.includes(d) ? "Feriado" : [0, 6].includes(new Date(d + "T12:00:00").getDay()) ? "Fim de semana" : "Dia de semana"}</span></div></div>${amount(F.rate(d, state.holidays), "tx-value pos", "+ ")}${c ? "" : `<div class="tx-actions"><button type="button" class="pay ${state.shiftPaid.includes(d) ? "is-done" : ""}" data-action="shift-paid" data-date="${d}" aria-pressed="${state.shiftPaid.includes(d)}">${state.shiftPaid.includes(d) ? icon("check") + "Recebido" : "Receber"}</button></div>`}</div>`,
       )
-      .join("") || '<p class="muted">Nenhum plantão neste mês. Toque nos dias do calendário.</p>';
-  return `${pageHead("Sua escala", "Toque nos dias para marcar ou desmarcar plantões. Dias úteis valem R$ 50; fins de semana e feriados, R$ 100.")}<div class="shift-layout"><article class="panel"><div class="calendar">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => `<div class="weekday">${d}</div>`).join("")}${"<span></span>".repeat(first)}${days}</div><label class="toggle compact"><span><strong>Marcar feriados</strong><small>Com esta opção ligada, o toque marca o dia como feriado.</small></span><input id="holiday-mode" type="checkbox" ${holidayMode ? "checked" : ""}><i aria-hidden="true"></i></label></article><div class="stack"><article class="panel stat-panel"><span class="stat-label">Total da escala</span>${bigAmount(t.shiftTotal)}<p class="muted">${t.shiftCount} plantões, ${esc(F.money(paid))} recebidos</p></article><article class="panel">${panelHead("Plantões do mês")}<div class="tx-list">${list}</div></article></div></div>`;
+      .join("") || '<p class="muted">Nenhum plantão marcado neste mês. Toque nos dias do calendário.</p>';
+  const setup =
+    !c || shiftPayEditing
+      ? `<article class="panel shift-setup">${panelHead(c ? "Alterar o pagamento" : "Quando os plantões são pagos?", "Os plantões entram juntos, como uma receita só, no dia da folha.")}${shiftPayForm(c)}</article>`
+      : "";
+  const breakdown = [normal && `${normal} em dia de semana`, p.weekend && `${p.weekend} no fim de semana`, p.holiday && `${p.holiday} em feriado`].filter(Boolean).join(", ");
+  const current = c && c.offset === 1 ? F.shiftPayroll(state, month) : null;
+  return `${pageHead("Plantões de " + esc(monthName(month).toLowerCase()), "Toque nos dias em que você pegou plantão. De segunda a sexta vale R$ 50; sábado, domingo e feriado, R$ 100.", c && !shiftPayEditing ? btn("shift-pay-edit", "Dia do pagamento", { cls: "ghost", icon: "calendar" }) : "")}${setup}
+  <div class="shift-layout"><article class="panel"><div class="shift-legend"><span><i class="lg-day"></i>Dia de semana R$ 50</span><span><i class="lg-weekend"></i>Fim de semana R$ 100</span><span><i class="lg-holiday"></i>Feriado R$ 100</span></div><div class="calendar">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => `<div class="weekday">${d}</div>`).join("")}${"<span></span>".repeat(first)}${days}</div><label class="toggle compact"><span><strong>Marcar feriados</strong><small>Ligado, o toque marca o dia como feriado (dia de semana com feriado vale R$ 100).</small></span><input id="holiday-mode" type="checkbox" ${holidayMode ? "checked" : ""}><i aria-hidden="true"></i></label></article>
+  <div class="stack"><article class="panel stat-panel shift-total"><span class="stat-label">Total de ${esc(monthName(month).toLowerCase())}</span>${bigAmount(p.total)}<p class="muted">${p.count ? `${p.count} ${p.count === 1 ? "plantão" : "plantões"}${breakdown ? ": " + breakdown : ""}` : "Nenhum plantão marcado ainda."}</p>${
+    c && p.count
+      ? `<div class="payroll-line"><div><span class="muted">Entra na folha de</span><strong>${fullDate(p.payday)}</strong></div><button type="button" class="pay ${p.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${work}" aria-pressed="${p.done}">${p.done ? icon("check") + "Recebido" : "Marcar como recebido"}</button></div>`
+      : ""
+  }</article>${
+    current && current.count
+      ? `<article class="panel payroll-now">${panelHead("Folha deste mês", `Em ${fullDate(current.payday)} entram os plantões de ${esc(monthName(current.work).toLowerCase())}.`)}<div class="payroll-line"><div>${amount(current.total, "pos")}<span class="muted">${current.count} ${current.count === 1 ? "plantão" : "plantões"}</span></div><button type="button" class="pay ${current.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${current.work}" aria-pressed="${current.done}">${current.done ? icon("check") + "Recebido" : "Receber"}</button></div></article>`
+      : ""
+  }<article class="panel">${panelHead("Dias marcados")}<div class="tx-list">${list}</div></article></div></div>`;
 }
 function goalRing(p) {
   const r = 26,
@@ -439,8 +470,11 @@ function csv() {
         (((e.type === "expense" ? -1 : 1) * e.value) / 100).toFixed(2).replace(".", ","),
         e.done ? "Confirmado" : "Pendente",
       ]),
+      ...(state.shiftPay && ownerTools()
+        ? [shiftPayrollRow(month)].filter(Boolean).map((e) => [e.date, e.name, "Receita", "Plantões", (e.value / 100).toFixed(2).replace(".", ","), e.done ? "Recebido" : "Pendente"])
+        : []),
       ...F.shiftList(state)
-        .filter((d) => F.monthOf(d) === month)
+        .filter((d) => !state.shiftPay && F.monthOf(d) === month)
         .sort()
         .map((d) => [
           d,
@@ -509,7 +543,7 @@ document.addEventListener("click", (e) => {
   const a = b.dataset.action,
     id = b.dataset.id,
     d = b.dataset.date;
-  if (["day", "shift-paid"].includes(a) && !ownerTools()) return;
+  if (["day", "shift-paid", "shift-payroll", "shift-pay-save", "shift-pay-edit"].includes(a) && !ownerTools()) return;
   if (a === "more-open") {
     renderNav();
     $("#more-sheet").showModal();
@@ -547,6 +581,24 @@ document.addEventListener("click", (e) => {
       if (key === "shifts") state.shiftPaid = state.shiftPaid.filter((x) => x !== d);
     } else state[key].push(d);
     commit();
+  } else if (a === "shift-payroll") {
+    const days = state.shifts.filter((x) => F.monthOf(x) === b.dataset.month),
+      all = days.length && days.every((x) => state.shiftPaid.includes(x));
+    state.shiftPaid = all ? state.shiftPaid.filter((x) => !days.includes(x)) : [...new Set([...state.shiftPaid, ...days])];
+    commit(all ? "Folha de plantões voltou para a receber." : "Folha de plantões recebida.");
+  } else if (a === "shift-pay-edit") {
+    shiftPayEditing = true;
+    render();
+  } else if (a === "shift-pay-save") {
+    const day = Number($("#shift-pay-day").value),
+      offset = Number($("#shift-pay-offset").value);
+    if (!Number.isInteger(day) || day < 1 || day > 31 || ![0, 1].includes(offset)) {
+      toast("Informe um dia entre 1 e 31.");
+      return;
+    }
+    state.shiftPay = { day, offset };
+    shiftPayEditing = false;
+    commit(offset ? `Pronto: os plantões de cada mês entram na folha do dia ${day} do mês seguinte.` : `Pronto: os plantões entram na folha do dia ${day} do mesmo mês.`);
   } else if (a === "shift-paid") {
     state.shiftPaid = state.shiftPaid.includes(d) ? state.shiftPaid.filter((x) => x !== d) : [...state.shiftPaid, d];
     commit();

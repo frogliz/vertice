@@ -50,7 +50,8 @@ function filtersActive() {
   );
 }
 function ledgerView() {
-  const all = F.entries(state, month);
+  const payroll = shiftPayrollRow(month),
+    all = payroll ? [...F.entries(state, month), payroll] : F.entries(state, month);
   let list = all
     .filter(
       (e) =>

@@ -18,7 +18,10 @@ function confirmedFlow() {
     const date = F.dateFor(month, i),
       entries = all.filter((e) => e.done && e.date <= date);
     let value = t.opening + entries.reduce((a, e) => a + (e.type === "income" ? e.value : -e.value), 0);
-    value += paidShifts.filter((d) => d.startsWith(month) && d <= date).reduce((a, d) => a + F.rate(d, state.holidays), 0);
+    if (state.shiftPay) {
+      const p = F.shiftPayroll(state, month);
+      if (p.paid && p.payday <= date) value += p.paid;
+    } else value += paidShifts.filter((d) => d.startsWith(month) && d <= date).reduce((a, d) => a + F.rate(d, state.holidays), 0);
     value -= (state.transfers || [])
       .filter((e) => e.date.startsWith(month) && e.date <= date)
       .reduce((a, e) => a + (e.kind === "deposit" ? e.value : -e.value), 0);
@@ -106,7 +109,8 @@ function destinations(t) {
   }</article>`;
 }
 function upcomingPanel(t) {
-  const pending = t.list
+  const payroll = shiftPayrollRow(month),
+    pending = [...t.list, ...(payroll ? [payroll] : [])]
     .filter((e) => !e.done)
     .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   const late = pending.filter(isLate).length;
@@ -167,6 +171,7 @@ function homeView() {
     toPay = t.expense - t.paid;
   return `<section class="hero">
     <article class="lens">
+      <span class="lens-rim" aria-hidden="true"><i></i></span>
       <div class="lens-grain" aria-hidden="true"></div>
       <div class="lens-top"><span class="chip">${esc(mlabel(month))}</span>${btn("month-settings", "Ajustar mês", { cls: "link" })}</div>
       <p class="lens-label">Disponível agora</p>
@@ -240,14 +245,26 @@ function helpView() {
     )
     .join("")}</div><p class="hint center">Algo não funcionou? Mande um print da tela para quem te indicou o Vértice.</p>`;
 }
+const chartPoints = new WeakMap();
+let chartFrame = 0;
 function updateChartCursor(chart, clientX) {
   const svg = chart.querySelector("svg"),
     rect = svg.getBoundingClientRect(),
-    w = Number(chart.dataset.w),
-    points = JSON.parse(chart.dataset.points),
+    w = Number(chart.dataset.w);
+  if (!chartPoints.has(chart)) chartPoints.set(chart, JSON.parse(chart.dataset.points));
+  const points = chartPoints.get(chart),
     vx = ((clientX - rect.left) / rect.width) * w;
-  let best = 0;
-  for (let i = 1; i < points.length; i++) if (Math.abs(points[i][0] - vx) < Math.abs(points[best][0] - vx)) best = i;
+  // Busca binária: os pontos já estão em ordem no eixo x.
+  let lo = 0,
+    hi = points.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid][0] < vx) lo = mid;
+    else hi = mid;
+  }
+  const best = Math.abs(points[lo][0] - vx) <= Math.abs(points[hi][0] - vx) ? lo : hi;
+  if (chart.dataset.cursor === String(best)) return;
+  chart.dataset.cursor = best;
   const [px, py, label, value] = points[best],
     cursor = svg.querySelector(".cursor"),
     tip = chart.querySelector(".chart-tip");
@@ -261,13 +278,19 @@ function updateChartCursor(chart, clientX) {
 }
 document.addEventListener("pointermove", (e) => {
   const chart = e.target.closest?.(".line-chart");
-  if (chart) updateChartCursor(chart, e.clientX);
+  if (!chart || chartFrame) return;
+  const x = e.clientX;
+  chartFrame = requestAnimationFrame(() => {
+    chartFrame = 0;
+    updateChartCursor(chart, x);
+  });
 });
 document.addEventListener(
   "pointerleave",
   (e) => {
     if (!e.target.classList?.contains("line-chart")) return;
     e.target.querySelector(".cursor")?.setAttribute("hidden", "");
+    delete e.target.dataset.cursor;
     const tip = e.target.querySelector(".chart-tip");
     if (tip) tip.hidden = true;
   },

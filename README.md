@@ -59,4 +59,4 @@ O banco copia os dados de todos os usuários duas vezes por dia (6h e 18h de Bra
 
 `config.js` tem apenas a URL e a chave **publicável** do Supabase. Nunca coloque `service_role`, senha do banco ou chave secreta no código. A política de segurança de conteúdo (CSP) está no `index.html` e bloqueia scripts, fontes e conexões de fora, exceto o Supabase do projeto.
 
-Plantões aparecem só para a conta com `app_metadata.vertice_owner = true` (veja `database/DONO-PLANTOES.sql`). Para quem não é o dono, plantões também não entram nos totais.
+Plantões aparecem só para a conta com `app_metadata.vertice_owner = true` (já marcada na conta do Russo; o modelo está em `database/DONO-PLANTOES.sql`). Para quem não é o dono, plantões também não entram nos totais. Com `shiftPay = { day, offset }`, os plantões de um mês entram juntos no dia da folha (`offset` 1 = mês seguinte, 0 = mesmo mês).
