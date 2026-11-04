@@ -5,7 +5,7 @@ const root = __dirname,
   dist = path.join(root, "dist");
 const files = [
   "index.html", "vertice.css", "manifest.webmanifest", "favicon.svg", "icon-192.png", "icon-512.png",
-  "icon-maskable-512.png", "apple-touch-icon.png", "og.png", "_headers", "config.js", "mona-sans.woff2",
+  "icon-maskable-512.png", "apple-touch-icon.png", "og.png", "_headers", "config.js", "guard.js", "mona-sans.woff2",
   "appearance-model.js", "icons.js", "theme.js", "catalog.js", "security.js", "shared-engine.js", "engine.js",
   "ui.js", "growth.js", "monthly.js", "cloud-store.js", "auth-errors.js", "auth.js", "shared.js",
   "experience.js", "goals.js", "profile.js", "home.js", "app.js",

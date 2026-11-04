@@ -57,6 +57,8 @@ O banco copia os dados de todos os usuários duas vezes por dia (6h e 18h de Bra
 
 ## Segurança
 
+Relatório completo de 03/11/2026 no Claude Docs ("Relatório de segurança do Vértice"). Proteções do banco prontas para aplicar em `database/SEGURANCA-BANCO.sql` (validação no servidor, limite de gravações, registro de atividade suspeita, permissões mínimas) e o teste de ataque em `database/TESTE-ATAQUE.sql`. `guard.js` impede o site de ser embutido em outro (clickjacking), já que o GitHub Pages não envia cabeçalhos próprios.
+
 `config.js` tem apenas a URL e a chave **publicável** do Supabase. Nunca coloque `service_role`, senha do banco ou chave secreta no código. A política de segurança de conteúdo (CSP) está no `index.html` e bloqueia scripts, fontes e conexões de fora, exceto o Supabase do projeto.
 
 Plantões aparecem só para a conta com `app_metadata.vertice_owner = true` (já marcada na conta do Russo; o modelo está em `database/DONO-PLANTOES.sql`). Para quem não é o dono, plantões também não entram nos totais. Com `shiftPay = { day, offset }`, os plantões de um mês entram juntos no dia da folha (`offset` 1 = mês seguinte, 0 = mesmo mês).

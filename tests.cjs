@@ -1084,6 +1084,33 @@ test("Plantões ficam invisíveis para quem não é o dono, inclusive a folha", 
   run("view='shifts';render()");
   assert.equal(run("view"), "shared");
 });
+test("Parcelas em quadradinhos: paga, atrasada, do mês e futura; tocar marca como paga", () => {
+  const { run, get, document } = context();
+  run(`month=today().slice(0,7);state.debts=[{id:'d1',name:'Geladeira',creditor:'',start:Finance.shiftMonth(month,-2)+'-01',firstDue:Finance.shiftMonth(month,-2)+'-01',total:300000,count:6,principal:0}];state.paid['debt:d1:0@'+Finance.shiftMonth(month,-2)]=true;view='transactions';render()`);
+  const html = get("#main").innerHTML;
+  assert.ok(html.includes('class="inst paid"') && html.includes('class="inst late"') && html.includes('class="inst future"'));
+  assert.equal((html.match(/data-action="installment-paid"/g) || []).length, 6);
+  assert.ok(html.includes("1<small>/6</small>"));
+  document.listeners.click({ target: { closest: () => ({ dataset: { action: "installment-paid", id: "debt:d1:1", date: run("Finance.shiftMonth(month,-1)") + "-01" } }) } });
+  assert.equal(run("state.paid['debt:d1:1@'+Finance.shiftMonth(month,-1)]"), true);
+});
+test("Nova compra parcelada mostra a prévia das parcelas antes de salvar", () => {
+  const { run, get } = context();
+  run("openDebt()");
+  assert.ok(get("#fields").innerHTML.includes('data-action="debt-count"'));
+  assert.ok(get("#fields").innerHTML.includes('id="debt-preview"'));
+});
+test("Nova receita tem atalhos prontos e prévia dos meses", () => {
+  const { run, get } = context();
+  run("openEntry('income')");
+  const html = get("#fields").innerHTML;
+  assert.ok(html.includes('data-action="entry-preset"') && html.includes("Salário") && html.includes('id="entry-preview"'));
+  run("openEntry('expense')");
+  assert.ok(get("#fields").innerHTML.includes("Mercado"));
+  run("openEntry('expense', false, undefined)");
+  run(`state.entries=[{id:'x',name:'Luz',type:'expense',value:100,date:'2026-11-05',recurring:false,end:'',category:'Moradia'}];openEntry('expense',false,'x')`);
+  assert.ok(!get("#fields").innerHTML.includes('data-action="entry-preset"'), "editar não mostra atalhos");
+});
 const asyncTests = [];
 const atest = (name, fn) => asyncTests.push(async () => {
   await fn();

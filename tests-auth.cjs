@@ -63,8 +63,9 @@ function setup(initial = null) {
         return { error: null };
       },
       updateUser: async () => ({ data: { user: session?.user }, error: null }),
-      signOut: async () => {
-        session = null;
+      signOut: async (opts) => {
+        (globalThis.__signOutScopes ||= []).push(opts?.scope || "global");
+        if (opts?.scope !== "others") session = null;
         return { error: null };
       },
     },
@@ -189,7 +190,7 @@ function setup(initial = null) {
     const c = setup();
     await c.start();
     await c.click({ authView: "signup" });
-    await c.submit({ name: "Alice", email: "alice@example.com", password: "12345678", confirmation: "12345678" });
+    await c.submit({ name: "Alice", email: "alice@example.com", password: "Girassol2026", confirmation: "Girassol2026" });
     assert.equal(c.counts().signups, 1);
     assert.equal(c.document.body.dataset.auth, "gate");
     assert.ok(c.get("#auth-message").textContent.includes("confirmar"));
@@ -262,10 +263,42 @@ function setup(initial = null) {
       user: { id: "alice@example.com", email: "alice@example.com", user_metadata: {} },
     });
     assert.ok(c.get("#auth-title").textContent.includes("nova senha"));
-    await c.submit({ password: "new-password", confirmation: "new-password" });
+    globalThis.__signOutScopes = [];
+    await c.submit({ password: "nova-senha-2026", confirmation: "nova-senha-2026" });
+    assert.ok(globalThis.__signOutScopes.includes("others"), "troca de senha encerra as outras sessões");
     assert.equal(c.document.body.dataset.auth, "cloud");
     assert.equal(c.run("Account.ready"), true);
     await c.click({ account: "logout" });
+  });
+  await test("Senha fraca é recusada antes de ir para o servidor", async () => {
+    const c = setup();
+    await c.start();
+    await c.click({ authView: "signup" });
+    for (const pw of ["12345678", "senhasemnumero", "11111111"]) {
+      await c.submit({ name: "Alice", email: "alice@example.com", password: pw, confirmation: pw });
+      assert.equal(c.counts().signups, 0, pw);
+    }
+    await c.submit({ name: "Alice", email: "alicesilva@example.com", password: "alicesilva9", confirmation: "alicesilva9" });
+    assert.equal(c.counts().signups, 0);
+    assert.ok(c.get("#auth-message").textContent.includes("e-mail"));
+  });
+  await test("Depois de 5 senhas erradas o login espera antes de tentar de novo", async () => {
+    const c = setup();
+    await c.start();
+    for (let i = 0; i < 5; i++) await c.submit({ email: "alice@example.com", password: "errada" + i });
+    await c.submit({ email: "alice@example.com", password: "correct-password" });
+    assert.ok(c.get("#auth-message").textContent.includes("aguarde"));
+    assert.notEqual(c.document.body.dataset.auth, "cloud");
+  });
+  await test("Sair de todos os aparelhos encerra a sessão em todo lugar", async () => {
+    const c = setup();
+    await c.start();
+    await c.submit({ email: "alice@example.com", password: "correct-password" });
+    globalThis.__signOutScopes = [];
+    c.run("globalThis.confirm = () => true");
+    await c.click({ account: "logout-all" });
+    assert.deepEqual(globalThis.__signOutScopes, ["global"]);
+    assert.equal(c.document.body.dataset.auth, "gate");
   });
   await test("Sessão confirmada não é confundida com senha errada quando falta tabela", async () => {
     const c = setup();

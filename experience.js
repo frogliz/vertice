@@ -119,11 +119,14 @@ function installmentManager() {
   if (!debts.length) return "";
   const rows = debts
     .map((d) => {
-      const x = F.debtSummary(state, d, today());
-      return `<div class="debt-row"><div class="debt-main"><strong>${esc(d.name)}</strong><span class="muted">${x.paidCount} de ${d.count} pagas, faltam ${amount(x.remaining)}</span>${progress(pct(x.paidCount, d.count))}</div><div class="tx-actions">${btn("debt-details", selectedDebt === d.id ? "Fechar" : "Ver parcelas", { id: selectedDebt === d.id ? "" : d.id, cls: "ghost" })}${iconBtn("debt-edit", "edit", "Editar " + d.name, d.id)}${iconBtn("debt-delete", "trash", "Excluir " + d.name, d.id, "danger")}</div></div>${selectedDebt === d.id ? debtDetails(d) : ""}`;
+      const x = F.debtSummary(state, d, today()),
+        all = selectedDebt === d.id,
+        start = Math.max(0, x.schedule.findIndex((e) => !e.done) - 1),
+        list = all || x.schedule.length <= 12 ? x.schedule : x.schedule.slice(start, start + 12);
+      return `<div class="debt-card"><div class="debt-row"><div class="debt-main"><strong>${esc(d.name)}</strong><span class="muted">${x.paidCount} de ${d.count} pagas${x.overdue.length ? `, <b class="neg-text">${x.overdue.length} ${x.overdue.length === 1 ? "atrasada" : "atrasadas"}</b>` : ""}, faltam ${amount(x.remaining)}</span>${progress(pct(x.paidCount, d.count), "var(--pos)")}</div><div class="tx-actions">${iconBtn("debt-edit", "edit", "Editar " + d.name, d.id)}${iconBtn("debt-delete", "trash", "Excluir " + d.name, d.id, "danger")}</div></div>${installmentGrid(list)}${x.schedule.length > 12 ? `<button type="button" class="btn ghost inst-toggle" data-action="debt-details" data-id="${all ? "" : esc(d.id)}">${all ? "Mostrar menos" : `Ver todas as ${d.count} parcelas`}</button>` : ""}</div>`;
     })
     .join("");
-  return `<article class="panel installments">${panelHead("Compras parceladas", "Cada parcela entra sozinha no mês certo. Excluir remove todas as parcelas.", btn("debt-new", "Parcelar compra", { icon: "plus", cls: "ghost" }))}${rows}</article>`;
+  return `<article class="panel installments">${panelHead("Compras parceladas", "Toque no quadradinho da parcela quando pagar. Toque de novo para voltar.", btn("debt-new", "Parcelar compra", { icon: "plus", cls: "ghost" }))}${rows}</article>`;
 }
 function categoriesView() {
   const all = catList(),

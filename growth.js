@@ -12,14 +12,25 @@ function upgradeState(s) {
     wealth: s.wealth || { monthly: 0, essential: 0, months: 6 },
   };
 }
+// Quadradinho de uma parcela: número, mês, valor e situação. Tocar marca como paga ou volta para pendente.
+function installmentTile(e, clickable = true) {
+  const now = today(),
+    thisMonth = now.slice(0, 7),
+    m = e.date.slice(0, 7),
+    late = !e.done && e.date < now,
+    status = e.done ? "paid" : late ? "late" : m === thisMonth ? "now" : "future",
+    label = e.done ? "Paga" : late ? "Atrasada" : m === thisMonth ? "Vence dia " + Number(e.date.slice(8)) : "A vencer";
+  const inner = `<span class="inst-n">${e.installment}<small>/${e.count}</small></span><span class="inst-month">${esc(shortMonth(m))}</span><span class="inst-value" data-private>${esc(F.money(e.value))}</span><span class="inst-state">${e.done ? icon("check") : ""}${label}</span>`;
+  return clickable
+    ? `<button type="button" class="inst ${status}" data-action="installment-paid" data-id="${esc(e.id)}" data-date="${e.date}" aria-pressed="${e.done}" title="${e.done ? "Toque para voltar a pendente" : "Toque quando pagar"}" aria-label="Parcela ${e.installment} de ${e.count}, ${esc(mlabel(m))}, ${esc(F.money(e.value))}, ${label}">${inner}</button>`
+    : `<div class="inst ${status}">${inner}</div>`;
+}
+function installmentGrid(list, clickable = true, max = 0, more = "") {
+  const shown = max && list.length > max ? list.slice(0, max) : list;
+  return `<div class="inst-grid">${shown.map((e) => installmentTile(e, clickable)).join("")}${max && list.length > max ? more : ""}</div>`;
+}
 function debtDetails(d) {
-  const x = F.debtSummary(state, d, today());
-  return `<div class="debt-schedule">${x.schedule
-    .map(
-      (e) =>
-        `<div class="tx ${e.done ? "done" : ""} ${!e.done && e.date < today() ? "late" : ""}"><span class="tx-icon">${e.installment}</span><div class="tx-main"><strong class="tx-title">Parcela ${e.installment} de ${e.count}</strong><div class="tx-meta"><span class="due">${fullDate(e.date)}, ${e.done ? "paga" : e.date < today() ? "vencida" : "a vencer"}</span></div></div>${amount(e.value, "tx-value")}<div class="tx-actions"><button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="installment-paid" data-id="${esc(e.id)}" data-date="${e.date}" aria-pressed="${e.done}">${e.done ? icon("check") + "Paga" : "Pagar"}</button></div></div>`,
-    )
-    .join("")}</div>`;
+  return installmentGrid(F.debtSummary(state, d, today()).schedule);
 }
 function wealthView() {
   const funds = state.funds,
@@ -73,9 +84,36 @@ function openDebt(id) {
     (d
       ? hint("Mudar valor, datas ou número de parcelas recalcula tudo e desmarca os pagamentos. Mudar só o nome mantém tudo.")
       : field("Parcelas que já foram pagas", "paidCount", "number", 0, true, 'required min="0" max="600" step="1"')) +
-    hint("A parcela vence no mesmo dia nos meses seguintes. Os centavos de arredondamento ficam nas primeiras parcelas.");
+    `<div class="full count-chips" role="group" aria-label="Escolha rápida de parcelas">${[2, 3, 4, 6, 10, 12, 18, 24].map((n) => `<button type="button" data-action="debt-count" data-id="${n}" aria-pressed="${(d?.count || 12) === n}">${n}x</button>`).join("")}</div>` +
+    `<div class="full debt-preview" id="debt-preview" aria-live="polite"></div>`;
   showDialog({ danger: d ? btn("debt-delete", "Excluir", { id: d.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+  renderDebtPreview();
 }
+// Prévia ao vivo: mostra cada parcela, mês e valor antes de salvar (assim não precisa editar depois).
+function renderDebtPreview() {
+  const box = $("#debt-preview");
+  if (!box || modal?.kind !== "debt") return;
+  const get = (n) => $(`#fields [name="${n}"]`)?.value ?? "",
+    total = F.cents(get("total")),
+    count = Number(get("count")),
+    firstDue = get("firstDue"),
+    paidCount = Math.max(0, Number(get("paidCount") || 0));
+  if (!Number.isSafeInteger(total) || total <= 0 || !Number.isInteger(count) || count < 1 || count > 600 || !/^\d{4}-\d{2}-\d{2}$/.test(firstDue)) {
+    box.innerHTML = '<p class="hint">Preencha o valor total, o número de parcelas e a data da primeira para ver como fica.</p>';
+    return;
+  }
+  const fake = { id: "preview", name: get("name") || "Compra", total, count, firstDue },
+    list = F.debtSchedule({ paid: {} }, fake).map((e, i) => ({ ...e, done: i < paidCount && !modal.id })),
+    each = Math.floor(total / count),
+    last = list.at(-1).date.slice(0, 7);
+  box.innerHTML = `<div class="debt-preview-head"><strong>${count}x de ${esc(F.money(each))}</strong><span class="muted">de ${esc(shortMonth(list[0].date.slice(0, 7)))} a ${esc(shortMonth(last))}, todo dia ${Number(firstDue.slice(8))}</span></div>${installmentGrid(list, false, 24, `<div class="inst more">+${count - 24}</div>`)}`;
+}
+document.addEventListener("input", (e) => {
+  if (modal?.kind === "debt" && ["total", "count", "firstDue", "paidCount", "name"].includes(e.target.name)) {
+    if (e.target.name === "count") document.querySelectorAll(".count-chips button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === e.target.value)));
+    renderDebtPreview();
+  }
+});
 function openFund(id) {
   const f = state.funds.find((f) => f.id === id);
   modal = { kind: "fund", id };
@@ -249,7 +287,12 @@ function handleGrowthAction(a, b) {
     }
     return true;
   }
-  if (a === "debt-new") openDebt();
+  if (a === "debt-count") {
+    const input = $('#fields [name="count"]');
+    if (input) input.value = b.dataset.id;
+    document.querySelectorAll(".count-chips button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderDebtPreview();
+  } else if (a === "debt-new") openDebt();
   else if (a === "debt-edit") openDebt(id);
   else if (a === "debt-details") {
     selectedDebt = id || null;

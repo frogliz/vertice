@@ -331,12 +331,26 @@ const Account = (() => {
       message("Use pelo menos 8 caracteres e repita a mesma senha nos dois campos.", true);
       return;
     }
+    const weak = ["signup", "reset"].includes(view) && passwordProblem(password, email || user?.email || "");
+    if (weak) {
+      message(weak, true);
+      return;
+    }
+    const wait = view === "login" ? loginWait() : 0;
+    if (wait) {
+      message(`Muitas senhas erradas seguidas. Por segurança, aguarde ${wait} segundos e tente de novo.`, true);
+      return;
+    }
     button.disabled = true;
     message("");
     try {
       if (view === "login") {
         const { data, error } = await client.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          if (error.code === "invalid_credentials" || /invalid login/i.test(error.message || "")) loginFailed();
+          throw error;
+        }
+        loginGuard([]);
         form.reset();
         await handleSession("SIGNED_IN", data.session);
       } else if (view === "signup") {
@@ -374,6 +388,10 @@ const Account = (() => {
       } else if (view === "reset") {
         const { data, error } = await client.auth.updateUser({ password });
         if (error) throw error;
+        // Senha trocada: encerra as sessões abertas em outros aparelhos (quem tinha a senha antiga sai).
+        try {
+          await client.auth.signOut({ scope: "others" });
+        } catch (_) {}
         recovery = false;
         user = null;
         form.reset();
@@ -387,7 +405,39 @@ const Account = (() => {
       button.disabled = false;
     }
   }
-  async function logout() {
+  // Senha forte o bastante: letras e números, fora das senhas mais comuns e sem o próprio e-mail.
+  const commonPasswords = ["12345678", "123456789", "1234567890", "password", "senha123", "senha1234", "qwerty123", "abc12345", "11111111", "00000000", "87654321", "brasil123", "mudar123", "admin123", "iloveyou", "12341234", "a1b2c3d4"];
+  function passwordProblem(password, email) {
+    const lower = password.toLowerCase(),
+      local = String(email || "").split("@")[0].toLowerCase();
+    if (!/[a-z]/i.test(password) || !/[0-9]/.test(password)) return "Use letras e números na senha (por exemplo, uma palavra com alguns números).";
+    if (commonPasswords.includes(lower) || /^(.)\1+$/.test(password)) return "Essa senha é muito comum. Escolha outra, mais difícil de adivinhar.";
+    if (local.length >= 4 && lower.includes(local)) return "Não use o seu e-mail dentro da senha.";
+    return "";
+  }
+  // Espera progressiva depois de 5 senhas erradas em 15 minutos neste navegador
+  // (o servidor do Supabase também limita tentativas por endereço).
+  const guardKey = "vertice-login-guard";
+  function loginGuard(next) {
+    try {
+      if (next) localStorage.setItem(guardKey, JSON.stringify(next));
+      const list = JSON.parse(localStorage.getItem(guardKey) || "[]");
+      return Array.isArray(list) ? list.filter((t) => Number.isFinite(t) && Date.now() - t < 900000) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function loginFailed() {
+    loginGuard([...loginGuard(), Date.now()].slice(-20));
+  }
+  function loginWait() {
+    const fails = loginGuard();
+    if (fails.length < 5) return 0;
+    const delay = Math.min(900, 30 * 2 ** (fails.length - 5)),
+      left = Math.ceil((fails[fails.length - 1] + delay * 1000 - Date.now()) / 1000);
+    return left > 0 ? left : 0;
+  }
+  async function logout(scope = "local") {
     if (
       store?.snapshot().dirty &&
       !(await store.flush()) &&
@@ -407,7 +457,7 @@ const Account = (() => {
     node("#dialog").close();
     setGate("login");
     if (client) {
-      const { error } = await client.auth.signOut({ scope: "local" });
+      const { error } = await client.auth.signOut({ scope });
       if (error) {
         try {
           localStorage.removeItem("vertice-auth-session-v1");
@@ -445,6 +495,9 @@ const Account = (() => {
           }
         }
       } else if (name === "logout") await logout();
+      else if (name === "logout-all") {
+        if (confirm("Sair desta conta em todos os aparelhos (computador, celular e outros navegadores)?")) await logout("global");
+      }
       else if (name === "sync") {
         if (!store) return;
         const s = store.snapshot();
@@ -503,7 +556,7 @@ const Account = (() => {
   function panel() {
     const cloud = mode === "cloud" && user;
     const name = cloud ? String(user.user_metadata?.display_name || user.email?.split("@")[0] || "Minha conta").slice(0, 60) : "";
-    return `<article class="panel account-card"><div class="account-id"><span class="avatar lg" data-me-avatar>${cloud ? safe(name.slice(0, 2).toUpperCase()) : "EU"}</span><div><h3>${cloud ? safe(name) : "Você está sem conta"}</h3><p class="muted">${cloud ? safe(user.email) : "Os dados ficam só neste navegador. Com uma conta, ficam salvos online e aparecem em qualquer aparelho."}</p></div></div><div class="row-actions">${cloud ? '<button class="btn" data-account="sync">Sincronizar agora</button><button class="btn ghost" data-account="import-local">Trazer dados do modo sem conta</button><button class="btn ghost" data-account="logout">Sair da conta</button>' : '<button class="btn primary" data-account="open">Entrar ou criar conta</button>'}</div></article>`;
+    return `<article class="panel account-card"><div class="account-id"><span class="avatar lg" data-me-avatar>${cloud ? safe(name.slice(0, 2).toUpperCase()) : "EU"}</span><div><h3>${cloud ? safe(name) : "Você está sem conta"}</h3><p class="muted">${cloud ? safe(user.email) : "Os dados ficam só neste navegador. Com uma conta, ficam salvos online e aparecem em qualquer aparelho."}</p></div></div><div class="row-actions">${cloud ? '<button class="btn" data-account="sync">Sincronizar agora</button><button class="btn ghost" data-account="import-local">Trazer dados do modo sem conta</button><button class="btn ghost" data-account="logout">Sair da conta</button><button class="btn ghost" data-account="logout-all">Sair de todos os aparelhos</button>' : '<button class="btn primary" data-account="open">Entrar ou criar conta</button>'}</div></article>`;
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest?.("[data-account],[data-auth-view]");

@@ -26,6 +26,11 @@
     if (/VERTICE_INVALID_REMOTE/.test(text))
       return "Os dados online não puderam ser validados. Não substituímos sua cópia local.";
     if (/VERTICE_BUSY/.test(text)) return "Aguarde o salvamento atual terminar e tente novamente.";
+    if (code === "54000" || /VERTICE_RATE_LIMIT/.test(text))
+      return "Muitas alterações seguidas em pouco tempo. Aguarde alguns minutos: nada se perde, tudo continua salvo neste aparelho.";
+    if (code === "22023" || /VERTICE_INVALID_STATE/.test(text))
+      return "O servidor recusou esta alteração por segurança. Recarregue a página; se continuar, baixe um backup e fale com o responsável.";
+    if (code === "weak_password") return "Essa senha é fraca demais. Use letras e números, com pelo menos 8 caracteres.";
     if (/fetch|network|connection/i.test(text))
       return "Não foi possível conectar. Confira a internet e tente novamente.";
     if (error?.callback)

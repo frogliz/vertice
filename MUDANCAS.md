@@ -1,5 +1,16 @@
 # O que mudou
 
+## Versão de 03/11/2026 (segurança e parcelas)
+- **Revisão de segurança completa**, com relatório. Nenhuma chave secreta exposta, nenhum ataque de XSS funcionou e cada conta só acessa os próprios dados.
+- **Senha forte no cadastro**: letras e números, sem senhas comuns nem o próprio e-mail.
+- **Espera progressiva** depois de 5 senhas erradas em 15 minutos.
+- **Trocar a senha encerra as sessões** em outros aparelhos, e há o botão **Sair de todos os aparelhos** em Configurações.
+- **Proteção contra o site ser embutido** escondido dentro de outro site (clickjacking).
+- Mensagens claras quando o servidor recusa dados ou limita gravações.
+- **Parcelas em quadradinhos**: cada parcela mostra número, mês, valor e situação (paga, atrasada, do mês ou a vencer). Um toque marca como paga.
+- **Nova compra parcelada** com botões rápidos (2x a 24x) e prévia ao vivo de todas as parcelas antes de salvar.
+- **Nova receita ou despesa** com atalhos prontos (Salário, Freelance, Aluguel, Mercado…) que já preenchem descrição, categoria e repetição, e prévia dos meses em que vai entrar ou sair.
+
 ## Versão de 03/11/2026 (plantões)
 - **Plantões liberados só para a conta do Russo** (permissão marcada no banco; nenhuma outra conta vê a tela, nem a folha nos totais).
 - **Folha de plantões**: você toca nos dias em que pegou plantão e o total entra de uma vez, como uma receita só, no dia do pagamento. Dá para escolher o dia e se é na folha do mesmo mês ou do mês seguinte.

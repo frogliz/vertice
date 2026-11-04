@@ -300,6 +300,46 @@ function goalRing(p) {
 function typeSwitch(current) {
   return `<div class="type-switch full" role="radiogroup" aria-label="Tipo"><label><input type="radio" name="type" value="expense" ${current === "expense" ? "checked" : ""}><span>${icon("expense")}Despesa</span></label><label><input type="radio" name="type" value="income" ${current === "income" ? "checked" : ""}><span>${icon("income")}Receita</span></label></div>`;
 }
+// Atalhos para não precisar editar depois: preenchem descrição, categoria e repetição de uma vez.
+const entryPresets = {
+  income: [
+    ["Salário", "Receitas", true],
+    ["Freelance", "Receitas", false],
+    ["Vendas", "Receitas", false],
+    ["Pix recebido", "Receitas", false],
+    ["Aluguel recebido", "Receitas", true],
+    ["Pensão", "Receitas", true],
+  ],
+  expense: [
+    ["Aluguel", "Moradia", true],
+    ["Mercado", "Alimentação", false],
+    ["Luz", "Moradia", true],
+    ["Internet", "Assinaturas", true],
+    ["Transporte", "Transporte", false],
+    ["Cartão de crédito", "Outros", true],
+  ],
+};
+function presetChips(type) {
+  return `<div class="full preset-chips" role="group" aria-label="Atalhos">${entryPresets[type].map(([name], i) => `<button type="button" data-action="entry-preset" data-id="${i}">${esc(name)}</button>`).join("")}</div>`;
+}
+// Prévia: em que meses e dias o lançamento vai aparecer.
+function renderEntryPreview() {
+  const box = $("#entry-preview");
+  if (!box || modal?.kind !== "entry") return;
+  const f = (n) => $(`#fields [name="${n}"]`),
+    type = $('#fields input[name="type"]:checked')?.value || "expense",
+    value = F.cents(f("value")?.value || ""),
+    date = f("date")?.value || "",
+    recurring = !!f("recurring")?.checked,
+    end = f("end")?.value || "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return (box.innerHTML = "");
+  const start = date.slice(0, 7),
+    months = recurring ? Array.from({ length: 6 }, (_, i) => F.shiftMonth(start, i)).filter((m) => !end || m <= end) : [start],
+    money = Number.isSafeInteger(value) && value > 0 ? F.money(value) : "R$ —";
+  box.innerHTML = `<span class="field-label">${recurring ? (type === "income" ? "Vai entrar todo mês" : "Vai sair todo mês") : type === "income" ? "Vai entrar uma vez" : "Vai sair uma vez"}</span><div class="month-tiles">${months
+    .map((m) => `<div class="month-tile ${type}"><b>${esc(monthName(m, "short"))}</b><span>dia ${Number(F.dateFor(m, Number(date.slice(8))).slice(8))}</span><small data-private>${esc(money)}</small></div>`)
+    .join("")}${recurring && !end ? '<div class="month-tile more">e segue</div>' : ""}</div>`;
+}
 function openEntry(type = "expense", recurring = false, id) {
   const e = id ? state.entries.find((e) => e.id === id) : null;
   const current = e?.type || type;
@@ -307,6 +347,7 @@ function openEntry(type = "expense", recurring = false, id) {
   $("#modal-title").textContent = e ? "Editar lançamento" : current === "income" ? "Nova receita" : "Nova despesa";
   $("#fields").innerHTML =
     typeSwitch(current) +
+    (e ? "" : presetChips(current)) +
     moneyField("Valor", "value", e ? e.value : "", false, 'required autofocus aria-describedby="form-error"') +
     field(
       "Data",
@@ -325,8 +366,10 @@ function openEntry(type = "expense", recurring = false, id) {
       "done",
       e && state.paid[e.id + "@" + month],
       "Vale só para " + esc(mlabel(month)) + ".",
-    );
+    ) +
+    '<div class="full entry-preview" id="entry-preview" aria-live="polite"></div>';
   showDialog({ danger: e ? btn("delete", "Excluir", { id: e.id, cls: "danger", icon: "trash", attrs: "data-dismiss" }) : "" });
+  renderEntryPreview();
 }
 const submitLabels = {
   entry: "Salvar lançamento",
@@ -557,6 +600,21 @@ document.addEventListener("click", (e) => {
   if (typeof handleSharedAction === "function" && handleSharedAction(a, b)) return;
   if (handleMonthAction(a, b)) return;
   if (handleGrowthAction(a, b)) return;
+  if (a === "entry-preset" && modal?.kind === "entry") {
+    const type = $('#fields input[name="type"]:checked')?.value || "expense",
+      [name, category, rec] = entryPresets[type][Number(b.dataset.id)] || [];
+    if (!name) return;
+    const f = (n) => $(`#fields [name="${n}"]`);
+    f("name").value = name;
+    const select = f("category");
+    if (select && [...select.options].some((o) => o.value === category)) select.value = category;
+    f("recurring").checked = rec;
+    syncEndField();
+    document.querySelectorAll(".preset-chips button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderEntryPreview();
+    f("value").focus();
+    return;
+  }
   if (a === "expense") openEntry();
   else if (a === "fixed-expense") openEntry("expense", true);
   else if (a === "fixed-income") openEntry("income", true);
@@ -625,7 +683,17 @@ document.addEventListener("click", (e) => {
     commit("Exemplo carregado. Os valores são fictícios.");
   }
 });
+document.addEventListener("input", (e) => {
+  if (modal?.kind === "entry" && ["value", "date", "end"].includes(e.target.name)) renderEntryPreview();
+});
 document.addEventListener("change", (e) => {
+  if (modal?.kind === "entry" && ["recurring", "type", "date", "end"].includes(e.target.name)) {
+    if (e.target.name === "type") {
+      const chips = document.querySelector(".preset-chips");
+      if (chips) chips.outerHTML = presetChips(e.target.value);
+    }
+    renderEntryPreview();
+  }
   if (e.target.name === "recurring") syncEndField();
   if (e.target.id === "type-filter") {
     filter = e.target.value;
