@@ -1,5 +1,13 @@
 # O que mudou
 
+## Versão de 05/11/2026 (contracheque e feriados)
+- **Plantões continuam só na conta do Russo.**
+- **Contracheque**: salário bruto + plantões, menos o INSS e outros descontos, como **um valor líquido** no dia do pagamento. Mostra a conta faixa por faixa.
+- **INSS automático** pela tabela oficial de 2026 (7,5% a 14%, por faixas, sobre tudo que se ganha no mês), ou porcentagem fixa, ou sem desconto.
+- **Dia do pagamento** como "5º dia útil" (sábado conta, como na CLT; se cair no fim de semana ou feriado, recebe no dia útil anterior) ou dia fixo, com prévia dos próximos pagamentos.
+- **Feriados nacionais automáticos** no calendário (incluindo Carnaval, Sexta-feira Santa e Corpus Christi, calculados pela Páscoa). Cada um pode ser desligado se não contar, e qualquer dia pode ser marcado como feriado (municipal, por exemplo) no modo **Marcar feriados**.
+- Ficha "Como você recebe" em 5 passos, já preenchida com o salário que estiver em Lançamentos, e aviso para não contar o salário duas vezes.
+
 ## Versão de 03/11/2026 (segurança e parcelas)
 - **Revisão de segurança completa**, com relatório. Nenhuma chave secreta exposta, nenhum ataque de XSS funcionou e cada conta só acessa os próprios dados.
 - **Senha forte no cadastro**: letras e números, sem senhas comuns nem o próprio e-mail.

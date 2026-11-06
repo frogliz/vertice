@@ -150,7 +150,7 @@ function render() {
   $("#subtitle").textContent = ["appearance", "help"].includes(view) ? "" : periodText();
   document.body.dataset.view = view;
   renderNav();
-  $("#main").innerHTML = {
+  const mainHTML = {
     shared: homeView,
     appearance: appearanceView,
     transactions: ledgerView,
@@ -162,6 +162,8 @@ function render() {
     wealth: wealthView,
     help: helpView,
   }[view]();
+  $("#main").innerHTML = mainHTML;
+  if (view === "shifts") renderPayPreview();
   syncPrivacyButton();
   if (typeof paintAvatars === "function") paintAvatars();
   animatePage();
@@ -238,59 +240,145 @@ function txList(list, actions = true, groupByDay = true) {
     )
     .join("")}</div>`;
 }
-let shiftPayEditing = false;
-// Linha da folha de plantões em Lançamentos e no Início (só para o dono, com a folha configurada).
+let shiftPayEditing = false,
+  payInssMode = null;
+const weekdayShort = (d) => capital(new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""));
+// Linha do pagamento (salário + plantões ou só plantões) em Lançamentos e no Início. Só para o dono.
 function shiftPayrollRow(m) {
   if (!ownerTools() || !state.shiftPay) return null;
-  const p = F.shiftPayroll(state, m);
-  if (!p.count) return null;
-  return { id: "payroll:" + p.work, name: "Plantões de " + monthName(p.work).toLowerCase(), type: "income", value: p.total, date: p.payday, category: "Plantões", done: p.done, payroll: true, work: p.work, count: p.count, recurring: false };
+  const p = F.payslip(state, m);
+  if (!p.count && !p.extended) return null;
+  if (!p.net && !p.count) return null;
+  return {
+    id: "payroll:" + m,
+    name: p.extended ? (p.salary ? "Salário" + (p.count ? " + plantões" : "") : "Plantões de " + monthName(p.work).toLowerCase()) : "Plantões de " + monthName(p.work).toLowerCase(),
+    type: "income",
+    value: p.extended ? p.net : p.total,
+    date: p.payday,
+    category: "Plantões",
+    done: p.done,
+    payroll: true,
+    month: m,
+    work: p.work,
+    count: p.count,
+    net: p.extended,
+    recurring: false,
+  };
 }
 function payrollRow(e, actions = true) {
-  return `<div class="tx income payroll ${e.done ? "done" : ""} ${isLate(e) ? "late" : ""}"><span class="tx-icon" style="--c:#8f7cff">${icon("shifts")}</span><div class="tx-main"><strong class="tx-title">${esc(e.name)}</strong><div class="tx-meta"><span class="tag">${e.count} ${e.count === 1 ? "plantão" : "plantões"}</span><span class="tag">Na folha</span><span class="due">${dueText(e.date, e.done, "income")}</span></div></div>${amount(e.value, "tx-value pos", "+ ")}${actions ? `<div class="tx-actions"><button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${e.work}" aria-pressed="${e.done}">${e.done ? icon("check") + "Recebido" : "Receber"}</button>${actions === "compact" ? "" : `<button type="button" class="icon-btn" data-view="shifts" title="Abrir plantões" aria-label="Abrir plantões">${icon("open")}</button>`}</div>` : ""}</div>`;
+  return `<div class="tx income payroll ${e.done ? "done" : ""} ${isLate(e) ? "late" : ""}"><span class="tx-icon" style="--c:#8f7cff">${icon("shifts")}</span><div class="tx-main"><strong class="tx-title">${esc(e.name)}</strong><div class="tx-meta">${e.count ? `<span class="tag">${e.count} ${e.count === 1 ? "plantão" : "plantões"}</span>` : ""}<span class="tag">${e.net ? "Líquido, já sem INSS" : "Na folha"}</span><span class="due">${dueText(e.date, e.done, "income")}</span></div></div>${amount(e.value, "tx-value pos", "+ ")}${actions ? `<div class="tx-actions"><button type="button" class="pay ${e.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${e.month}" aria-pressed="${e.done}">${e.done ? icon("check") + "Recebido" : "Receber"}</button>${actions === "compact" ? "" : `<button type="button" class="icon-btn" data-view="shifts" title="Abrir plantões" aria-label="Abrir plantões">${icon("open")}</button>`}</div>` : ""}</div>`;
 }
-function shiftPayForm(c) {
-  return `<div class="shift-pay-form"><label class="field"><span class="field-label">Dia do pagamento</span><input id="shift-pay-day" type="number" inputmode="numeric" min="1" max="31" step="1" value="${c?.day || 5}"></label><label class="field"><span class="field-label">Os plantões de um mês são pagos</span><select id="shift-pay-offset"><option value="1" ${!c || c.offset === 1 ? "selected" : ""}>Na folha do mês seguinte</option><option value="0" ${c?.offset === 0 ? "selected" : ""}>Na folha do mesmo mês</option></select></label>${btn("shift-pay-save", "Salvar", { cls: "primary" })}</div>`;
+// Lançamento de salário antigo (receita mensal com "salário" no nome) que a folha passa a substituir.
+function salaryEntry() {
+  return state.entries.find(
+    (e) => e.type === "income" && e.recurring && /sal[aá]rio/i.test(e.name) && (!e.end || e.end >= today().slice(0, 7)),
+  );
+}
+function payForm(c) {
+  const old = salaryEntry(),
+    salary = c?.salary ?? old?.value ?? "",
+    mode = c?.dayMode || "business",
+    inss = payInssMode || c?.inss || "table";
+  return `<div class="pay-form">
+    <div class="pay-step"><span class="step-n">1</span><div>${moneyField("Salário bruto do mês", "pay-salary", salary, false, 'id="pay-salary"')}<p class="hint">O valor antes dos descontos, como vem no contracheque. ${!c?.salary && old ? `Trouxe de “${esc(old.name)}”, que está em Lançamentos.` : "Deixe 0 se quiser contar só os plantões."}</p></div></div>
+    <div class="pay-step"><span class="step-n">2</span><div><span class="field-label">Quando o dinheiro cai na conta</span><div class="pay-day"><select id="pay-daymode" aria-label="Tipo de dia"><option value="business" ${mode === "business" ? "selected" : ""}>No dia útil número</option><option value="fixed" ${mode === "fixed" ? "selected" : ""}>Sempre no dia</option></select><input id="pay-day" type="number" inputmode="numeric" min="1" max="31" step="1" value="${c?.day || 5}" aria-label="Dia"></div><div id="pay-preview" class="pay-preview"></div><p class="hint">Dia útil: sábado conta e domingo e feriado não, como na lei trabalhista. Se cair no fim de semana ou feriado, conta o dia útil anterior.</p></div></div>
+    <div class="pay-step"><span class="step-n">3</span><div>${selectField("O salário e os plantões de um mês são pagos", "pay-offset", [["1", "No mês seguinte (o mais comum)"], ["0", "No mesmo mês"]], String(c?.offset ?? 1), false, 'id="pay-offset"')}</div></div>
+    <div class="pay-step"><span class="step-n">4</span><div><span class="field-label">Desconto do INSS</span><div class="segmented inss-mode" role="group" aria-label="INSS">${[["table", "Tabela oficial"], ["percent", "Porcentagem fixa"], ["none", "Sem desconto"]].map(([v, l]) => `<button type="button" data-action="pay-inss" data-id="${v}" aria-pressed="${inss === v}">${l}</button>`).join("")}</div>${inss === "percent" ? `<label class="field inline-pct"><span class="field-label">Porcentagem</span><span class="money-input"><input id="pay-rate" type="text" inputmode="decimal" value="${c?.inssRate ? F.plain(c.inssRate) : "11"}" aria-label="Porcentagem do INSS"><i>%</i></span></label>` : ""}<p class="hint">${inss === "table" ? "Não sabe a porcentagem? Deixe assim: o Vértice calcula pela tabela de 2026 (7,5% a 14%, por faixas) sobre o salário mais os plantões, do jeito que a empresa faz." : inss === "percent" ? "Use se o seu contracheque mostra uma porcentagem só." : "Use se não há desconto de INSS."}</p></div></div>
+    <div class="pay-step"><span class="step-n">5</span><div>${moneyField("Outros descontos por mês (opcional)", "pay-other", c?.other || 0, false, 'id="pay-other"')}<p class="hint">Vale-transporte, plano de saúde, refeição… o total que sai todo mês.</p></div></div>
+    <div class="pay-actions">${c ? btn("shift-pay-cancel", "Cancelar", { cls: "ghost" }) : ""}${btn("shift-pay-save", "Salvar e ver o contracheque", { cls: "primary" })}</div>
+  </div>`;
+}
+function renderPayPreview() {
+  const box = $("#pay-preview");
+  if (!box) return;
+  const day = Number($("#pay-day")?.value),
+    dayMode = $("#pay-daymode")?.value;
+  if (!Number.isInteger(day) || day < 1 || day > (dayMode === "business" ? 23 : 31)) return (box.innerHTML = '<span class="hint">Escolha um dia válido.</span>');
+  const temp = { ...state, shiftPay: { day, offset: 1, dayMode } },
+    now = today().slice(0, 7);
+  box.innerHTML = `<span class="field-label">Próximos pagamentos</span><div class="month-tiles">${Array.from({ length: 4 }, (_, i) => {
+    const m = F.shiftMonth(now, i),
+      d = F.paydayOf(temp, m);
+    return `<div class="month-tile income"><b>${weekdayShort(d)} ${shortDate(d)}</b><span>${esc(monthName(m))}</span></div>`;
+  }).join("")}</div>`;
+}
+function payslipCard(p, title) {
+  const ins = p.inssDetail,
+    rows = [
+      p.salary ? ["Salário bruto", amount(p.salary)] : null,
+      [`Plantões de ${esc(monthName(p.work).toLowerCase())} (${p.count})`, amount(p.total)],
+      p.extended ? ["Total bruto", amount(p.gross), "sum"] : null,
+      p.inssMode !== "none" && p.extended ? [`INSS ${p.inssMode === "table" ? "(tabela " + ins.year + ")" : "(" + F.plain(state.shiftPay.inssRate || 0).replace(",00", "") + "%)"}`, amount(p.inss, "neg", "− ")] : null,
+      p.other ? ["Outros descontos", amount(p.other, "neg", "− ")] : null,
+    ].filter(Boolean);
+  const detail =
+    ins && ins.parts.length
+      ? `<details class="inss-detail"><summary>Como o INSS foi calculado${icon("down")}</summary><p class="hint">O desconto é por faixas: cada parte do total paga a porcentagem da sua faixa.</p>${ins.parts.map((x) => `<div class="split-line"><span>${(x.rate / 100).toString().replace(".", ",")}% sobre ${esc(F.money(x.to - x.from))}</span>${amount(x.value)}</div>`).join("")}${p.gross > ins.ceiling ? `<p class="hint">Acima de ${esc(F.money(ins.ceiling))} (teto) não há desconto.</p>` : ""}</details>`
+      : "";
+  return `<article class="panel payslip"><div class="payslip-head"><div><span class="stat-label">${title}</span><strong>Cai na conta ${p.payday ? `em ${weekdayShort(p.payday).toLowerCase()}, ${shortDate(p.payday)}` : ""}</strong></div><span class="chip ${p.done ? "" : "soft"}">${p.done ? "Recebido" : "A receber"}</span></div><div class="payslip-rows">${rows.map(([l, v, c]) => `<div class="split-line ${c || ""}"><span>${l}</span>${v}</div>`).join("")}</div><div class="payslip-net"><span>${p.extended ? "Líquido na conta" : "Total dos plantões"}</span>${bigAmount(p.extended ? p.net : p.total, "md pos")}</div>${detail}<button type="button" class="pay wide ${p.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${p.month}" aria-pressed="${p.done}">${p.done ? icon("check") + "Recebido. Tocar desfaz" : "Marcar como recebido"}</button></article>`;
 }
 function shifts() {
   const c = state.shiftPay,
     work = month,
     payMonth = F.shiftPayMonth(state, work),
-    p = F.shiftPayroll(state, payMonth),
+    p = F.payslip(state, payMonth),
     first = new Date(month + "-01T12:00:00").getDay(),
     normal = p.count - p.weekend - p.holiday;
   const days = Array.from({ length: F.daysIn(month) }, (_, i) => {
     const d = F.dateFor(month, i + 1),
       weekend = [0, 6].includes(new Date(d + "T12:00:00").getDay()),
       selected = state.shifts.includes(d),
-      holiday = state.holidays.includes(d),
-      value = F.rate(d, state.holidays) / 100;
-    return `<button type="button" class="day ${weekend ? "weekend" : ""} ${selected ? "selected" : ""} ${holiday ? "holiday" : ""} ${d === today() ? "today" : ""}" data-action="day" data-date="${d}" aria-pressed="${holidayMode ? holiday : selected}" aria-label="${dayLabel(d)}${holiday ? ", feriado" : ""}, R$ ${value}${selected ? ", plantão marcado" : ""}"><b>${i + 1}</b><small><span class="day-cur">R$ </span>${value}</small></button>`;
+      info = F.holidayInfo(d),
+      counts = F.holidayCounts(state, d),
+      value = F.shiftRate(state, d) / 100,
+      cls = counts ? "holiday" : info?.kind === "nacional" ? "holiday-off" : info ? "optional" : "";
+    return `<button type="button" class="day ${weekend ? "weekend" : ""} ${selected ? "selected" : ""} ${cls} ${d === today() ? "today" : ""}" data-action="day" data-date="${d}" aria-pressed="${holidayMode ? counts : selected}" title="${info ? esc(info.name) + (counts ? " (conta como feriado)" : " (não conta)") : ""}" aria-label="${dayLabel(d)}${info ? ", " + esc(info.name) : ""}${counts ? ", feriado" : ""}, R$ ${value}${selected ? ", plantão marcado" : ""}"><b>${i + 1}</b><small><span class="day-cur">R$ </span>${value}</small>${info || counts ? '<i class="hol-dot" aria-hidden="true"></i>' : ""}</button>`;
   }).join("");
+  const monthHolidays = Array.from({ length: F.daysIn(month) }, (_, i) => F.dateFor(month, i + 1)).filter((d) => F.holidayInfo(d) || (state.holidays || []).includes(d));
+  const holidayList = monthHolidays.length
+    ? `<div class="holiday-list">${monthHolidays
+        .map((d) => {
+          const info = F.holidayInfo(d),
+            counts = F.holidayCounts(state, d);
+          return `<div class="holiday-row"><div><strong>${dayLabel(d)}</strong><span class="muted">${info ? esc(info.name) + (info.kind === "facultativo" ? ", ponto facultativo" : ", feriado nacional") : "Feriado marcado por você"}</span></div><label class="toggle compact"><span><small>${counts ? "Conta como feriado" : "Não conta"}</small></span><input type="checkbox" data-holiday-toggle="${d}" ${counts ? "checked" : ""} aria-label="${dayLabel(d)} conta como feriado"><i aria-hidden="true"></i></label></div>`;
+        })
+        .join("")}</div>`
+    : "";
   const list =
     p.days
-      .map(
-        (d) =>
-          `<div class="tx"><span class="tx-icon" style="--c:${F.rate(d, state.holidays) > 5000 ? "#ff86c8" : "#8f7cff"}">${icon("calendar")}</span><div class="tx-main"><strong class="tx-title">${dayLabel(d)}</strong><div class="tx-meta"><span class="tag">${state.holidays.includes(d) ? "Feriado" : [0, 6].includes(new Date(d + "T12:00:00").getDay()) ? "Fim de semana" : "Dia de semana"}</span></div></div>${amount(F.rate(d, state.holidays), "tx-value pos", "+ ")}${c ? "" : `<div class="tx-actions"><button type="button" class="pay ${state.shiftPaid.includes(d) ? "is-done" : ""}" data-action="shift-paid" data-date="${d}" aria-pressed="${state.shiftPaid.includes(d)}">${state.shiftPaid.includes(d) ? icon("check") + "Recebido" : "Receber"}</button></div>`}</div>`,
-      )
+      .map((d) => {
+        const info = F.holidayInfo(d);
+        return `<div class="tx"><span class="tx-icon" style="--c:${F.shiftRate(state, d) > 5000 ? "#ff86c8" : "#8f7cff"}">${icon("calendar")}</span><div class="tx-main"><strong class="tx-title">${dayLabel(d)}</strong><div class="tx-meta"><span class="tag">${F.holidayCounts(state, d) ? (info ? esc(info.name) : "Feriado") : [0, 6].includes(new Date(d + "T12:00:00").getDay()) ? "Fim de semana" : "Dia de semana"}</span></div></div>${amount(F.shiftRate(state, d), "tx-value pos", "+ ")}${c ? "" : `<div class="tx-actions"><button type="button" class="pay ${state.shiftPaid.includes(d) ? "is-done" : ""}" data-action="shift-paid" data-date="${d}" aria-pressed="${state.shiftPaid.includes(d)}">${state.shiftPaid.includes(d) ? icon("check") + "Recebido" : "Receber"}</button></div>`}</div>`;
+      })
       .join("") || '<p class="muted">Nenhum plantão marcado neste mês. Toque nos dias do calendário.</p>';
   const setup =
-    !c || shiftPayEditing
-      ? `<article class="panel shift-setup">${panelHead(c ? "Alterar o pagamento" : "Quando os plantões são pagos?", "Os plantões entram juntos, como uma receita só, no dia da folha.")}${shiftPayForm(c)}</article>`
+    !c || shiftPayEditing || (c && !c.dayMode)
+      ? `<article class="panel shift-setup">${panelHead(c?.dayMode ? "Como você recebe" : "Como você recebe? Leva 1 minuto", "Com isso o Vértice monta o seu contracheque: salário mais plantões, menos o INSS, no dia certo.")}${payForm(c)}</article>`
+      : "";
+  const old = salaryEntry();
+  const salaryWarning =
+    c?.salary && old
+      ? `<div class="banner warn-banner"><div><strong>Seu salário está contado duas vezes</strong><p>O contracheque já inclui o salário, e “${esc(old.name)}” também está em Lançamentos. Pare o lançamento antigo para não somar duas vezes.</p></div><div class="row-actions">${btn("shift-stop-salary", "Parar “" + esc(old.name) + "”", { cls: "primary", id: old.id })}</div></div>`
       : "";
   const breakdown = [normal && `${normal} em dia de semana`, p.weekend && `${p.weekend} no fim de semana`, p.holiday && `${p.holiday} em feriado`].filter(Boolean).join(", ");
-  const current = c && c.offset === 1 ? F.shiftPayroll(state, month) : null;
-  return `${pageHead("Plantões de " + esc(monthName(month).toLowerCase()), "Toque nos dias em que você pegou plantão. De segunda a sexta vale R$ 50; sábado, domingo e feriado, R$ 100.", c && !shiftPayEditing ? btn("shift-pay-edit", "Dia do pagamento", { cls: "ghost", icon: "calendar" }) : "")}${setup}
-  <div class="shift-layout"><article class="panel"><div class="shift-legend"><span><i class="lg-day"></i>Dia de semana R$ 50</span><span><i class="lg-weekend"></i>Fim de semana R$ 100</span><span><i class="lg-holiday"></i>Feriado R$ 100</span></div><div class="calendar">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => `<div class="weekday">${d}</div>`).join("")}${"<span></span>".repeat(first)}${days}</div><label class="toggle compact"><span><strong>Marcar feriados</strong><small>Ligado, o toque marca o dia como feriado (dia de semana com feriado vale R$ 100).</small></span><input id="holiday-mode" type="checkbox" ${holidayMode ? "checked" : ""}><i aria-hidden="true"></i></label></article>
-  <div class="stack"><article class="panel stat-panel shift-total"><span class="stat-label">Total de ${esc(monthName(month).toLowerCase())}</span>${bigAmount(p.total)}<p class="muted">${p.count ? `${p.count} ${p.count === 1 ? "plantão" : "plantões"}${breakdown ? ": " + breakdown : ""}` : "Nenhum plantão marcado ainda."}</p>${
-    c && p.count
-      ? `<div class="payroll-line"><div><span class="muted">Entra na folha de</span><strong>${fullDate(p.payday)}</strong></div><button type="button" class="pay ${p.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${work}" aria-pressed="${p.done}">${p.done ? icon("check") + "Recebido" : "Marcar como recebido"}</button></div>`
-      : ""
-  }</article>${
-    current && current.count
-      ? `<article class="panel payroll-now">${panelHead("Folha deste mês", `Em ${fullDate(current.payday)} entram os plantões de ${esc(monthName(current.work).toLowerCase())}.`)}<div class="payroll-line"><div>${amount(current.total, "pos")}<span class="muted">${current.count} ${current.count === 1 ? "plantão" : "plantões"}</span></div><button type="button" class="pay ${current.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${current.work}" aria-pressed="${current.done}">${current.done ? icon("check") + "Recebido" : "Receber"}</button></div></article>`
+  const nowSlip = c && c.offset === 1 ? F.payslip(state, month) : null;
+  return `${pageHead("Plantões de " + esc(monthName(month).toLowerCase()), "Toque nos dias em que você pegou plantão. Segunda a sexta R$ 50; sábado, domingo e feriado R$ 100.", c?.dayMode && !shiftPayEditing ? btn("shift-pay-edit", "Como eu recebo", { cls: "ghost", icon: "sliders" }) : "")}${salaryWarning}${setup}
+  <div class="shift-layout"><article class="panel"><div class="segmented cal-mode" role="group" aria-label="O que marcar"><button type="button" data-action="cal-mode" data-id="shift" aria-pressed="${!holidayMode}">${icon("calendar")}Marcar plantões</button><button type="button" data-action="cal-mode" data-id="holiday" aria-pressed="${holidayMode}">${icon("check")}Marcar feriados</button></div><p class="cal-hint">${holidayMode ? "Toque no dia para dizer se é feriado. Os feriados nacionais já vêm marcados; toque para tirar se no seu trabalho não contar." : "Toque no dia em que você pegou plantão. Toque de novo para desmarcar."}</p><div class="shift-legend"><span><i class="lg-day"></i>Dia de semana R$ 50</span><span><i class="lg-weekend"></i>Fim de semana R$ 100</span><span><i class="lg-holiday"></i>Feriado R$ 100</span><span><i class="lg-off"></i>Feriado que não conta</span></div><div class="calendar">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => `<div class="weekday">${d}</div>`).join("")}${"<span></span>".repeat(first)}${days}</div>${holidayList ? `<div class="holiday-box">${panelHead("Feriados de " + esc(monthName(month).toLowerCase()), "Ligado vale R$ 100 em dia de semana.")}${holidayList}</div>` : ""}</article>
+  <div class="stack"><article class="panel stat-panel shift-total"><span class="stat-label">Plantões de ${esc(monthName(month).toLowerCase())}</span>${bigAmount(p.total)}<p class="muted">${p.count ? `${p.count} ${p.count === 1 ? "plantão" : "plantões"}${breakdown ? ": " + breakdown : ""}` : "Nenhum plantão marcado ainda."}</p></article>${c ? payslipCard(p, `Contracheque de ${monthName(payMonth).toLowerCase()}`) : ""}${
+    nowSlip && (nowSlip.count || nowSlip.extended)
+      ? `<article class="panel payroll-now"><div class="payroll-line"><div><span class="muted">Neste mês, ${nowSlip.payday ? shortDate(nowSlip.payday) : ""}</span>${amount(nowSlip.extended ? nowSlip.net : nowSlip.total, "pos")}<span class="muted">${nowSlip.salary ? "Salário + " : ""}${nowSlip.count} ${nowSlip.count === 1 ? "plantão" : "plantões"} de ${esc(monthName(nowSlip.work).toLowerCase())}</span></div><button type="button" class="pay ${nowSlip.done ? "is-done" : ""}" data-action="shift-payroll" data-month="${month}" aria-pressed="${nowSlip.done}">${nowSlip.done ? icon("check") + "Recebido" : "Recebi"}</button></div></article>`
       : ""
   }<article class="panel">${panelHead("Dias marcados")}<div class="tx-list">${list}</div></article></div></div>`;
+}
+function toggleHoliday(d) {
+  const info = F.holidayInfo(d);
+  state.holidays = state.holidays || [];
+  state.holidayOff = state.holidayOff || [];
+  if (state.holidays.includes(d)) state.holidays = state.holidays.filter((x) => x !== d);
+  else if (info?.kind === "nacional") {
+    state.holidayOff = state.holidayOff.includes(d) ? state.holidayOff.filter((x) => x !== d) : [...state.holidayOff, d];
+  } else state.holidays = [...state.holidays, d];
+  if (!state.holidayOff.length) delete state.holidayOff;
 }
 function goalRing(p) {
   const r = 26,
@@ -524,7 +612,7 @@ function csv() {
           "Plantão",
           "Receita",
           "Plantões",
-          (F.rate(d, state.holidays) / 100).toFixed(2).replace(".", ","),
+          (F.shiftRate(state, d) / 100).toFixed(2).replace(".", ","),
           state.shiftPaid.includes(d) ? "Recebido" : "Pendente",
         ]),
     ];
@@ -586,7 +674,7 @@ document.addEventListener("click", (e) => {
   const a = b.dataset.action,
     id = b.dataset.id,
     d = b.dataset.date;
-  if (["day", "shift-paid", "shift-payroll", "shift-pay-save", "shift-pay-edit"].includes(a) && !ownerTools()) return;
+  if (["day", "shift-paid", "shift-payroll", "shift-pay-save", "shift-pay-edit", "shift-pay-cancel", "cal-mode", "pay-inss", "shift-stop-salary"].includes(a) && !ownerTools()) return;
   if (a === "more-open") {
     renderNav();
     $("#more-sheet").showModal();
@@ -633,30 +721,72 @@ document.addEventListener("click", (e) => {
       commit("Lançamento excluído.");
     }
   } else if (a === "day") {
-    const key = holidayMode ? "holidays" : "shifts";
-    if (state[key].includes(d)) {
-      state[key] = state[key].filter((x) => x !== d);
-      if (key === "shifts") state.shiftPaid = state.shiftPaid.filter((x) => x !== d);
-    } else state[key].push(d);
+    if (holidayMode) toggleHoliday(d);
+    else if (state.shifts.includes(d)) {
+      state.shifts = state.shifts.filter((x) => x !== d);
+      state.shiftPaid = state.shiftPaid.filter((x) => x !== d);
+    } else state.shifts.push(d);
     commit();
+  } else if (a === "cal-mode") {
+    holidayMode = b.dataset.id === "holiday";
+    render();
+  } else if (a === "pay-inss") {
+    payInssMode = b.dataset.id;
+    const keep = { salary: $("#pay-salary")?.value, day: $("#pay-day")?.value, mode: $("#pay-daymode")?.value, offset: $("#pay-offset")?.value, other: $("#pay-other")?.value };
+    render();
+    if ($("#pay-salary")) {
+      $("#pay-salary").value = keep.salary ?? "";
+      $("#pay-day").value = keep.day ?? 5;
+      $("#pay-daymode").value = keep.mode || "business";
+      $("#pay-offset").value = keep.offset ?? "1";
+      $("#pay-other").value = keep.other ?? "";
+      renderPayPreview();
+    }
+  } else if (a === "shift-pay-cancel") {
+    shiftPayEditing = false;
+    payInssMode = null;
+    render();
+  } else if (a === "shift-stop-salary") {
+    const entry = state.entries.find((x) => x.id === id),
+      since = state.shiftPay?.since || today().slice(0, 7);
+    if (!entry) return;
+    const stop = F.shiftMonth(since, -1);
+    if (stop >= entry.date.slice(0, 7)) entry.end = stop;
+    else if (confirm(`“${entry.name}” começou neste mês. Excluir o lançamento, já que o contracheque inclui o salário?`))
+      state.entries = state.entries.filter((x) => x.id !== id);
+    else return;
+    commit("Pronto: o salário agora vem só pelo contracheque.");
   } else if (a === "shift-payroll") {
-    const days = state.shifts.filter((x) => F.monthOf(x) === b.dataset.month),
-      all = days.length && days.every((x) => state.shiftPaid.includes(x));
-    state.shiftPaid = all ? state.shiftPaid.filter((x) => !days.includes(x)) : [...new Set([...state.shiftPaid, ...days])];
-    commit(all ? "Folha de plantões voltou para a receber." : "Folha de plantões recebida.");
+    // data-month = mês do pagamento. Marca o contracheque e os plantões que ele paga.
+    const pm = b.dataset.month,
+      slip = F.payslip(state, pm),
+      done = slip.done,
+      days = slip.days;
+    state.shiftPaid = done ? state.shiftPaid.filter((x) => !days.includes(x)) : [...new Set([...state.shiftPaid, ...days])];
+    if (done) delete state.paid[slip.key];
+    else state.paid[slip.key] = true;
+    commit(done ? "Pagamento voltou para a receber." : "Pagamento recebido.");
   } else if (a === "shift-pay-edit") {
     shiftPayEditing = true;
     render();
   } else if (a === "shift-pay-save") {
-    const day = Number($("#shift-pay-day").value),
-      offset = Number($("#shift-pay-offset").value);
-    if (!Number.isInteger(day) || day < 1 || day > 31 || ![0, 1].includes(offset)) {
-      toast("Informe um dia entre 1 e 31.");
-      return;
-    }
-    state.shiftPay = { day, offset };
+    const day = Number($("#pay-day").value),
+      dayMode = $("#pay-daymode").value === "fixed" ? "fixed" : "business",
+      offset = Number($("#pay-offset").value),
+      salary = F.cents($("#pay-salary").value || 0),
+      other = F.cents($("#pay-other").value || 0),
+      inss = payInssMode || state.shiftPay?.inss || "table",
+      rate = inss === "percent" ? F.cents($("#pay-rate")?.value || 0) : 0;
+    if (!Number.isInteger(day) || day < 1 || day > (dayMode === "business" ? 23 : 31)) return toast(dayMode === "business" ? "Escolha um dia útil entre 1 e 23." : "Escolha um dia entre 1 e 31.");
+    if (!Number.isSafeInteger(salary) || salary < 0 || !Number.isSafeInteger(other) || other < 0) return toast("Confira o salário e os descontos. Exemplo: 2.500,00.");
+    if (inss === "percent" && (!Number.isSafeInteger(rate) || rate <= 0 || rate > 5000)) return toast("Informe a porcentagem do INSS, por exemplo 11.");
+    const next = { day, offset, dayMode, inss, salary, other, since: state.shiftPay?.since || today().slice(0, 7) };
+    if (inss === "percent") next.inssRate = rate;
+    if (!F.valid({ ...state, shiftPay: next })) return toast("Confira os campos do pagamento.");
+    state.shiftPay = next;
     shiftPayEditing = false;
-    commit(offset ? `Pronto: os plantões de cada mês entram na folha do dia ${day} do mês seguinte.` : `Pronto: os plantões entram na folha do dia ${day} do mesmo mês.`);
+    payInssMode = null;
+    commit("Pronto. Veja o contracheque ao lado.");
   } else if (a === "shift-paid") {
     state.shiftPaid = state.shiftPaid.includes(d) ? state.shiftPaid.filter((x) => x !== d) : [...state.shiftPaid, d];
     commit();
@@ -685,6 +815,7 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("input", (e) => {
   if (modal?.kind === "entry" && ["value", "date", "end"].includes(e.target.name)) renderEntryPreview();
+  if (["pay-day", "pay-daymode"].includes(e.target.id)) renderPayPreview();
 });
 document.addEventListener("change", (e) => {
   if (modal?.kind === "entry" && ["recurring", "type", "date", "end"].includes(e.target.name)) {
@@ -706,7 +837,10 @@ document.addEventListener("change", (e) => {
   } else if (e.target.id === "holiday-mode" && ownerTools()) {
     holidayMode = e.target.checked;
     render();
-  }
+  } else if (e.target.dataset?.holidayToggle && ownerTools()) {
+    toggleHoliday(e.target.dataset.holidayToggle);
+    commit();
+  } else if (e.target.id === "pay-daymode") renderPayPreview();
 });
 document.addEventListener("input", (e) => {
   if (e.target.id === "search") {

@@ -32,6 +32,100 @@
     const day = new Date(date + "T12:00:00").getDay();
     return day === 0 || day === 6 || holidays.includes(date) ? 10000 : 5000;
   }
+  // Feriados nacionais do Brasil. Os móveis saem da data da Páscoa (algoritmo de Meeus).
+  // "nacional" conta automaticamente (pode ser desligado dia a dia); "facultativo" só conta se a pessoa marcar.
+  const holidayCache = new Map();
+  function easter(y) {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4,
+      f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30,
+      i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+      month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return Date.UTC(y, month - 1, day);
+  }
+  function nationalHolidays(y) {
+    if (holidayCache.has(y)) return holidayCache.get(y);
+    const out = {},
+      fixed = [
+        ["01-01", "Confraternização Universal"],
+        ["04-21", "Tiradentes"],
+        ["05-01", "Dia do Trabalho"],
+        ["09-07", "Independência"],
+        ["10-12", "Nossa Senhora Aparecida"],
+        ["11-02", "Finados"],
+        ["11-15", "Proclamação da República"],
+        ["11-20", "Consciência Negra"],
+        ["12-25", "Natal"],
+      ];
+    for (const [md, name] of fixed) if (md !== "11-20" || y >= 2024) out[`${y}-${md}`] = { name, kind: "nacional" };
+    const e = easter(y),
+      add = (days, name, kind) => (out[new Date(e + days * 86400000).toISOString().slice(0, 10)] = { name, kind });
+    add(-48, "Carnaval", "facultativo");
+    add(-47, "Carnaval", "facultativo");
+    add(-2, "Sexta-feira Santa", "nacional");
+    add(60, "Corpus Christi", "facultativo");
+    holidayCache.set(y, out);
+    return out;
+  }
+  const holidayInfo = (date) => nationalHolidays(Number(date.slice(0, 4)))[date] || null;
+  // Conta como feriado: marcado pela pessoa, ou nacional que ela não desligou.
+  function holidayCounts(s, date) {
+    if ((s.holidays || []).includes(date)) return true;
+    const n = holidayInfo(date);
+    return !!n && n.kind === "nacional" && !(s.holidayOff || []).includes(date);
+  }
+  const weekday = (date) => new Date(date + "T12:00:00").getDay();
+  // Valor do plantão: sábado, domingo e feriado R$ 100; dia de semana R$ 50.
+  const shiftRate = (s, date) => ([0, 6].includes(weekday(date)) || holidayCounts(s, date) ? 10000 : 5000);
+  // Dia em que o dinheiro cai. "business": n-ésimo dia útil (sábado conta, como manda a CLT; domingo e
+  // feriado não). Com dayMode definido, se cair em fim de semana ou feriado, recebe no dia útil anterior.
+  function paydayOf(s, m) {
+    const c = s.shiftPay;
+    if (!c) return null;
+    let date = dateFor(m, c.day);
+    if (c.dayMode === "business") {
+      let n = 0;
+      for (let d = 1; d <= daysIn(m); d++) {
+        const x = dateFor(m, d);
+        if (weekday(x) === 0 || holidayCounts(s, x)) continue;
+        if (++n === c.day) {
+          date = x;
+          break;
+        }
+        date = x;
+      }
+    }
+    if (c.dayMode) {
+      const back = (x) => new Date(new Date(x + "T12:00:00").getTime() - 86400000).toISOString().slice(0, 10);
+      let guard = 0;
+      while (([0, 6].includes(weekday(date)) || holidayCounts(s, date)) && date.slice(8) !== "01" && guard++ < 10) date = back(date);
+    }
+    return date;
+  }
+  // INSS do empregado, tabela progressiva oficial (limites em centavos, alíquota em centésimos de %).
+  // 2026: Portaria Interministerial MPS/MF nº 13/2026. Anos sem tabela usam a mais próxima.
+  const INSS_TABLES = {
+    2025: [[151800, 750], [279388, 900], [419083, 1200], [815741, 1400]],
+    2026: [[162100, 750], [290284, 900], [435427, 1200], [847555, 1400]],
+  };
+  function inssTable(year) {
+    const years = Object.keys(INSS_TABLES).map(Number);
+    return INSS_TABLES[year] ? year : year < Math.min(...years) ? Math.min(...years) : Math.max(...years);
+  }
+  function inssBreakdown(gross, year) {
+    const used = inssTable(year),
+      parts = [];
+    let prev = 0,
+      total = 0;
+    for (const [limit, rate] of INSS_TABLES[used]) {
+      if (gross <= prev) break;
+      const base = Math.min(gross, limit) - prev,
+        value = (base * rate) / 10000;
+      parts.push({ from: prev, to: Math.min(gross, limit), rate, value: Math.round(value) });
+      total += value;
+      prev = limit;
+    }
+    return { year: used, total: Math.round(total), parts, ceiling: INSS_TABLES[used].at(-1)[0] };
+  }
   // Folha de plantões: os plantões trabalhados em um mês entram juntos no dia do pagamento.
   // shiftPay = { day: 1..31, offset: 0 (mesmo mês) ou 1 (mês seguinte) }. Sem shiftPay, vale o jeito antigo:
   // cada plantão conta no próprio mês.
@@ -43,19 +137,34 @@
         .filter((d) => monthOf(d) === work)
         .sort(),
       paidDays = days.filter((d) => paidList.includes(d)),
-      sum = (list) => list.reduce((a, d) => a + rate(d, s.holidays), 0);
+      sum = (list) => list.reduce((a, d) => a + shiftRate(s, d), 0);
     return {
       configured: !!c,
       work,
-      payday: c ? dateFor(m, c.day) : null,
+      payday: c ? paydayOf(s, m) : null,
       days,
       count: days.length,
       total: sum(days),
       paid: sum(paidDays),
       done: days.length > 0 && paidDays.length === days.length,
       weekend: days.filter((d) => [0, 6].includes(new Date(d + "T12:00:00").getDay())).length,
-      holiday: days.filter((d) => ![0, 6].includes(new Date(d + "T12:00:00").getDay()) && s.holidays.includes(d)).length,
+      holiday: days.filter((d) => ![0, 6].includes(new Date(d + "T12:00:00").getDay()) && holidayCounts(s, d)).length,
     };
+  }
+  // Contracheque do mês de pagamento m: salário bruto + plantões, menos INSS e outros descontos.
+  function payslip(s, m) {
+    const p = shiftPayroll(s, m),
+      all = s.shiftPay || {},
+      c = all.since && m < all.since ? {} : all,
+      salary = c.salary || 0,
+      gross = salary + p.total,
+      table = c.inss === "table" ? inssBreakdown(gross, Number(p.work.slice(0, 4))) : null,
+      inss = table ? table.total : c.inss === "percent" ? Math.round((gross * (c.inssRate || 0)) / 10000) : 0,
+      other = c.other || 0,
+      net = Math.max(0, gross - inss - other),
+      key = "payroll@" + m,
+      done = !!(s.paid || {})[key] || (p.count > 0 && p.done && !salary && !inss && !other);
+    return { ...p, month: m, key, salary, gross, inss, inssMode: c.inss || "none", inssDetail: table, other, net, done, extended: !!(salary || c.inss || other) };
   }
   // Mês em que os plantões de um mês trabalhado são pagos.
   const shiftPayMonth = (s, work) => (s.shiftPay ? shiftMonth(work, s.shiftPay.offset) : work);
@@ -102,11 +211,13 @@
   }
   function totals(s, m) {
     const list = entries(s, m),
-      payroll = shiftPayroll(s, m),
+      payroll = payslip(s, m),
       shiftTotal = payroll.total,
-      income = list.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0) + shiftTotal,
+      payIncome = s.shiftPay ? payroll.net : payroll.total,
+      payReceived = s.shiftPay && payroll.extended ? (payroll.done ? payroll.net : 0) : payroll.done ? payIncome : payroll.paid,
+      income = list.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0) + payIncome,
       expense = list.filter((e) => e.type === "expense").reduce((a, e) => a + e.value, 0),
-      received = list.filter((e) => e.type === "income" && e.done).reduce((a, e) => a + e.value, 0) + payroll.paid,
+      received = list.filter((e) => e.type === "income" && e.done).reduce((a, e) => a + e.value, 0) + payReceived,
       paid = list.filter((e) => e.type === "expense" && e.done).reduce((a, e) => a + e.value, 0),
       opening = monthConfig(s, m).opening || 0;
     return {
@@ -271,15 +382,27 @@
           (s.profile.name === undefined || (typeof s.profile.name === "string" && s.profile.name.length <= 60)) &&
           photo(s.profile.photo, 90000) &&
           (s.profile.gravatar === undefined || typeof s.profile.gravatar === "boolean"));
+      const money = (v) => v === undefined || (Number.isSafeInteger(v) && v >= 0 && v <= 99999999900);
+      const sp = s.shiftPay;
       const shiftPayOk =
-        s.shiftPay === undefined ||
-        (s.shiftPay &&
-          typeof s.shiftPay === "object" &&
-          Number.isInteger(s.shiftPay.day) &&
-          s.shiftPay.day >= 1 &&
-          s.shiftPay.day <= 31 &&
-          [0, 1].includes(s.shiftPay.offset) &&
-          Object.keys(s.shiftPay).every((k) => ["day", "offset"].includes(k)));
+        sp === undefined ||
+        (sp &&
+          typeof sp === "object" &&
+          Number.isInteger(sp.day) &&
+          sp.day >= 1 &&
+          sp.day <= (sp.dayMode === "business" ? 23 : 31) &&
+          [0, 1].includes(sp.offset) &&
+          (sp.dayMode === undefined || ["fixed", "business"].includes(sp.dayMode)) &&
+          (sp.inss === undefined || ["table", "percent", "none"].includes(sp.inss)) &&
+          (sp.inssRate === undefined || (Number.isInteger(sp.inssRate) && sp.inssRate >= 0 && sp.inssRate <= 5000)) &&
+          money(sp.salary) &&
+          money(sp.other) &&
+          (sp.since === undefined || /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.since)) &&
+          Object.keys(sp).every((k) => ["day", "offset", "dayMode", "inss", "inssRate", "salary", "other", "since"].includes(k)));
+      const holidayOffOk =
+        s.holidayOff === undefined ||
+        (Array.isArray(s.holidayOff) && s.holidayOff.length <= 2000 && s.holidayOff.every(date) && new Set(s.holidayOff).size === s.holidayOff.length);
+      if (!holidayOffOk) return false;
       if (!goalsOk || !profileOk || !shiftPayOk) return false;
       return (
         (s.debts === undefined ||
@@ -437,6 +560,13 @@
   }
   root.Finance = {
     options,
+    nationalHolidays,
+    holidayInfo,
+    holidayCounts,
+    shiftRate,
+    paydayOf,
+    inssBreakdown,
+    payslip,
     shiftPayroll,
     shiftPayMonth,
     plain,

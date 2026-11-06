@@ -19,8 +19,9 @@ function confirmedFlow() {
       entries = all.filter((e) => e.done && e.date <= date);
     let value = t.opening + entries.reduce((a, e) => a + (e.type === "income" ? e.value : -e.value), 0);
     if (state.shiftPay) {
-      const p = F.shiftPayroll(state, month);
-      if (p.paid && p.payday <= date) value += p.paid;
+      const p = F.payslip(state, month),
+        got = p.extended ? (p.done ? p.net : 0) : p.done ? p.total : p.paid;
+      if (got && p.payday <= date) value += got;
     } else value += paidShifts.filter((d) => d.startsWith(month) && d <= date).reduce((a, d) => a + F.rate(d, state.holidays), 0);
     value -= (state.transfers || [])
       .filter((e) => e.date.startsWith(month) && e.date <= date)
