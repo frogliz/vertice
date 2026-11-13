@@ -1,5 +1,12 @@
 # O que mudou
 
+## Versão de 13/11/2026 (agenda do mês)
+- **Agenda do mês no Início** e em uma tela própria (**Agenda**, no menu): tudo que entra e sai no mês, num lugar só.
+- Três quadros no topo: **Vai entrar** (quanto já recebeu e quanto falta, e qual é o próximo recebimento), **Vai sair** (quanto já pagou, quanto falta e a próxima conta) e **Vai sobrar** (ou **Vai faltar**) no fim do mês.
+- **Calendário**: cada dia mostra em verde o que entra e em vermelho o que sai. Tocar em um dia mostra as contas daquele dia, com Pagar e Receber, e o saldo previsto no fim do dia. Dias com conta atrasada ganham um traço vermelho.
+- **Dia a dia**: lista só dos dias com movimento, com o **saldo depois de cada dia**, para ver quando o dinheiro aperta.
+- O antigo quadro "Próximos vencimentos" do Início foi substituído pela agenda. Nenhum dado mudou de formato.
+
 ## Versão de 05/11/2026 (contracheque e feriados)
 - **Plantões continuam só na conta do Russo.**
 - **Contracheque**: salário bruto + plantões, menos o INSS e outros descontos, como **um valor líquido** no dia do pagamento. Mostra a conta faixa por faixa.
