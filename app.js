@@ -39,6 +39,7 @@ let month = today().slice(0, 7),
 // Ordem do menu. "group" separa os blocos da barra lateral.
 const pages = {
   shared: { title: "Início", group: 1 },
+  agenda: { title: "Agenda", group: 1 },
   transactions: { title: "Lançamentos", group: 1 },
   forecast: { title: "Relatórios", group: 1 },
   categories: { title: "Categorias", group: 1 },
@@ -152,6 +153,7 @@ function render() {
   renderNav();
   const mainHTML = {
     shared: homeView,
+    agenda: agendaView,
     appearance: appearanceView,
     transactions: ledgerView,
     categories: categoriesView,

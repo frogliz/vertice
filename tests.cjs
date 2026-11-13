@@ -1213,3 +1213,23 @@ test("Foto do Openverse só é aceita no formato da miniatura oficial", () => {
   console.error(e);
   process.exit(1);
 });
+test("Agenda do mês: entradas, saídas e saldo dia a dia", () => {
+  const { run, get } = context();
+  run(`state.entries=[
+    {id:'s',name:'Salário',type:'income',category:'Salário',value:300000,date:'2026-10-05',recurring:true},
+    {id:'a',name:'Aluguel',type:'expense',category:'Moradia',value:90000,date:'2026-10-10',recurring:true},
+    {id:'m',name:'Mercado',type:'expense',category:'Mercado',value:20000,date:'2026-11-07',recurring:false}
+  ];month='2026-11';view='agenda';render()`);
+  const a = run("agendaData('2026-11')");
+  assert.equal(a.income, 300000);
+  assert.equal(a.expense, 110000);
+  assert.equal(a.closing, 190000);
+  assert.equal(a.days[4].balance, 300000);
+  assert.equal(a.days[6].balance, 280000);
+  assert.equal(a.days.at(-1).balance, run("Finance.totals(state,'2026-11').closing"));
+  assert.ok(get("#main").innerHTML.includes("Vai entrar no mês"));
+  run("agendaMode='list';render()");
+  assert.ok(get("#main").innerHTML.includes("Saldo depois deste dia"));
+  run("view='shared';render()");
+  assert.ok(get("#main").innerHTML.includes("Agenda do mês"));
+});

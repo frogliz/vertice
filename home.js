@@ -191,9 +191,9 @@ function homeView() {
   </section>
   ${note ? `<div class="month-note">${icon("calendar")}<span>${esc(note)}</span></div>` : ""}
   ${blankAll ? onboarding() : blankMonth ? `<article class="panel quiet-month"><div><h3>${esc(mlabel(month))} ainda está vazio</h3><p class="muted">Contas mensais aparecem sozinhas a partir do mês em que começam. Para trazer avulsos de outro mês, use Copiar.</p></div><div class="row-actions">${btn("month-copy", "Copiar de outro mês", { cls: "ghost", icon: "copy" })}${btn("expense", "Adicionar lançamento", { icon: "plus" })}</div></article>` : ""}
+  ${blankAll ? "" : agendaPanel()}
   <section class="home-grid">
     <article class="panel flow">${panelHead(flowRange === "half" ? "Fechamento dos últimos meses" : "Saldo ao longo do mês", flowRange === "half" ? "Quanto sobrou ou faltou no fim de cada mês." : "Só conta o que foi confirmado como pago ou recebido.", `<div class="segmented sm" role="group" aria-label="Período do gráfico"><button type="button" data-action="flow-range" data-id="month" aria-pressed="${flowRange === "month"}">Mês</button><button type="button" data-action="flow-range" data-id="half" aria-pressed="${flowRange === "half"}">6 meses</button></div>`)}${flowChart()}</article>
-    ${upcomingPanel(t)}
     ${destinations(t)}
     ${planPanel(t)}
   </section>
@@ -301,5 +301,121 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest?.('[data-action="flow-range"]');
   if (!b) return;
   flowRange = b.dataset.id === "half" ? "half" : "month";
+  render();
+});
+// Agenda do mês: tudo que entra e sai, dia por dia, com o saldo previsto depois de cada dia.
+let agendaMode = "calendar",
+  agendaDay = null;
+if (typeof ICONS !== "undefined" && !ICONS.agenda) ICONS.agenda = ICONS.calendar;
+// "1,2 mil", "350", "12 mil": cabe dentro do quadradinho do calendário.
+function shortMoney(v) {
+  const r = Math.abs(v) / 100;
+  if (r >= 1000) return (r >= 10000 ? Math.round(r / 1000) : (Math.round(r / 100) / 10).toString().replace(".", ",")) + " mil";
+  return String(Math.round(r));
+}
+function agendaData(m) {
+  const t = F.totals(state, m),
+    payroll = typeof shiftPayrollRow === "function" ? shiftPayrollRow(m) : null,
+    list = [...t.list, ...(payroll ? [payroll] : [])].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name)),
+    count = F.daysIn(m),
+    days = [];
+  let balance = t.opening;
+  for (let i = 1; i <= count; i++) {
+    const date = F.dateFor(m, i),
+      items = list.filter((e) => e.date === date),
+      income = items.filter((e) => e.type === "income").reduce((a, e) => a + e.value, 0),
+      expense = items.filter((e) => e.type === "expense").reduce((a, e) => a + e.value, 0),
+      saved = (state.transfers || [])
+        .filter((x) => x.date === date)
+        .reduce((a, x) => a + (x.kind === "deposit" ? x.value : -x.value), 0);
+    balance += income - expense - saved;
+    days.push({ date, items, income, expense, saved, balance, late: items.some(isLate) });
+  }
+  const sum = (type, done) => list.filter((e) => e.type === type && (done === undefined || e.done === done)).reduce((a, e) => a + e.value, 0),
+    now = today(),
+    next = (type) => list.find((e) => e.type === type && !e.done && e.date >= now) || list.find((e) => e.type === type && !e.done);
+  return {
+    list,
+    days,
+    opening: t.opening,
+    income: sum("income"),
+    received: sum("income", true),
+    expense: sum("expense"),
+    paid: sum("expense", true),
+    closing: days.length ? days.at(-1).balance : t.opening,
+    late: list.filter(isLate).length,
+    nextIn: next("income"),
+    nextOut: next("expense"),
+  };
+}
+function agendaWhen(date) {
+  const diff = daysBetween(today(), date),
+    day = "dia " + Number(date.slice(8));
+  if (diff < 0) return "atrasada, era " + day;
+  if (diff === 0) return "hoje";
+  if (diff === 1) return "amanhã";
+  if (diff <= 7) return `em ${diff} dias (${day})`;
+  return day;
+}
+function agendaNext(e, type) {
+  if (!e) return `<small class="muted">${type === "income" ? "Nada pendente para receber" : "Nada pendente para pagar"}</small>`;
+  return `<small class="agenda-next"><b>Próxima:</b> ${esc(e.name.replace(/ · \d+\/\d+$/, ""))}, ${esc(agendaWhen(e.date))} · ${amount(e.value)}</small>`;
+}
+function agendaSummary(a) {
+  const leftIn = a.income - a.received,
+    leftOut = a.expense - a.paid;
+  return `<div class="agenda-sum">
+    <div class="agenda-box in"><span class="agenda-label">${icon("income")}Vai entrar no mês</span>${amount(a.income, "agenda-big pos", "+ ")}${progress(pct(a.received, a.income), "var(--pos)")}<small class="muted">${amount(a.received)} já recebidos · faltam ${amount(leftIn)}</small>${agendaNext(a.nextIn, "income")}</div>
+    <div class="agenda-box out"><span class="agenda-label">${icon("expense")}Vai sair no mês</span>${amount(a.expense, "agenda-big neg", "− ")}${progress(pct(a.paid, a.expense), "var(--neg)")}<small class="muted">${amount(a.paid)} já pagos · faltam ${amount(leftOut)}</small>${agendaNext(a.nextOut, "expense")}</div>
+    <div class="agenda-box rest ${a.closing < 0 ? "is-neg" : ""}"><span class="agenda-label">${icon("check")}${a.closing < 0 ? "Vai faltar no fim do mês" : "Vai sobrar no fim do mês"}</span>${amount(Math.abs(a.closing), "agenda-big " + (a.closing < 0 ? "neg" : ""))}<small class="muted">Se tudo que está cadastrado acontecer${a.opening ? `, começando com ${amount(a.opening)}` : ""}.</small>${a.late ? `<small class="agenda-late">${a.late} ${a.late === 1 ? "conta atrasada" : "contas atrasadas"}</small>` : ""}</div>
+  </div>`;
+}
+function agendaDayDetail(d) {
+  if (!d) return "";
+  const head = `<div class="agenda-detail-head"><strong>${dayLabel(d.date)}${d.date === today() ? '<b class="today-chip">Hoje</b>' : ""}</strong><span class="muted">Saldo previsto no fim do dia: ${amount(d.balance, d.balance < 0 ? "neg" : "")}</span></div>`;
+  if (!d.items.length && !d.saved)
+    return `<div class="agenda-detail">${head}<p class="muted agenda-none">Nada entra nem sai neste dia.</p></div>`;
+  return `<div class="agenda-detail">${head}${d.items.length ? txList(d.items, "compact", false) : ""}${d.saved ? `<p class="hint">${d.saved > 0 ? "Guardado em Reservas: " : "Retirado de Reservas: "}${amount(Math.abs(d.saved))}</p>` : ""}</div>`;
+}
+function agendaCalendar(a) {
+  const first = new Date(a.days[0].date + "T12:00:00").getDay(),
+    now = today(),
+    selected = a.days.find((d) => d.date === agendaDay) || a.days.find((d) => d.date === now) || a.days.find((d) => d.items.length) || a.days[0];
+  const blanks = Array.from({ length: first }, () => '<span class="cal-cell blank" aria-hidden="true"></span>').join("");
+  const cells = a.days
+    .map((d) => {
+      const n = Number(d.date.slice(8)),
+        label = `${dayLabel(d.date)}${d.income ? ", entra " + F.money(d.income) : ""}${d.expense ? ", sai " + F.money(d.expense) : ""}`;
+      return `<button type="button" class="cal-cell ${d.date === now ? "is-today" : ""} ${d.date === selected.date ? "is-sel" : ""} ${d.items.length ? "has" : ""} ${d.late ? "is-late" : ""} ${d.date < now ? "past" : ""}" data-action="agenda-day" data-id="${d.date}" aria-pressed="${d.date === selected.date}" aria-label="${esc(label)}"><span class="cal-n">${n}</span>${d.income ? `<span class="cal-in" data-private>+${shortMoney(d.income)}</span>` : ""}${d.expense ? `<span class="cal-out" data-private>−${shortMoney(d.expense)}</span>` : ""}</button>`;
+    })
+    .join("");
+  return `<div class="agenda-cal"><div class="cal-grid">${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((w) => `<span class="cal-wd">${w}</span>`).join("")}${blanks}${cells}</div>${agendaDayDetail(selected)}</div>`;
+}
+function agendaList(a) {
+  const active = a.days.filter((d) => d.items.length || d.saved);
+  if (!active.length) return empty("Nada marcado neste mês", "Cadastre o que você recebe e o que paga, com o dia, e eles aparecem aqui em ordem.", "expense", "Adicionar lançamento");
+  return `<div class="agenda-list">${active
+    .map(
+      (d) =>
+        `<section class="agenda-day ${d.date === today() ? "is-today" : ""} ${d.date < today() ? "past" : ""}"><div class="agenda-date"><b>${Number(d.date.slice(8))}</b><span>${esc(weekdayShort(d.date))}</span></div><div class="agenda-items">${d.items.length ? txList(d.items, "compact", false) : ""}${d.saved ? `<p class="hint">${d.saved > 0 ? "Guardado em Reservas: " : "Retirado de Reservas: "}${amount(Math.abs(d.saved))}</p>` : ""}<div class="agenda-after"><span>Saldo depois deste dia</span>${amount(d.balance, d.balance < 0 ? "neg" : "")}</div></div></section>`,
+    )
+    .join("")}</div>`;
+}
+function agendaPanel(page = false) {
+  const a = agendaData(month);
+  return `<article class="panel agenda ${page ? "agenda-page" : ""}">${panelHead(
+    "Agenda do mês",
+    "O que você vai receber e pagar, dia por dia. Toque em um dia para ver os detalhes.",
+    `<div class="segmented sm" role="group" aria-label="Forma de ver a agenda"><button type="button" data-action="agenda-mode" data-id="calendar" aria-pressed="${agendaMode === "calendar"}">Calendário</button><button type="button" data-action="agenda-mode" data-id="list" aria-pressed="${agendaMode === "list"}">Dia a dia</button></div>`,
+  )}${agendaSummary(a)}${agendaMode === "list" ? agendaList(a) : agendaCalendar(a)}</article>`;
+}
+function agendaView() {
+  return agendaPanel(true);
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.('[data-action="agenda-mode"],[data-action="agenda-day"]');
+  if (!b) return;
+  if (b.dataset.action === "agenda-mode") agendaMode = b.dataset.id === "list" ? "list" : "calendar";
+  else agendaDay = b.dataset.id;
   render();
 });
